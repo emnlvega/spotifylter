@@ -695,6 +695,11 @@ async function startSession(token) {
   }
   SOURCE_CANDIDATES.push(...Object.keys(PLAYLISTS));
   writeCache();
+  try {
+    await syncPull(token);
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
   renderGrid();
   renderSourceSelect();
   const name = sourceName();
