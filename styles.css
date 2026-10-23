@@ -239,7 +239,14 @@ button:hover { border-color: #3d475a; }
   background: #1b2029;
 }
 #track-list .track.current {
-  outline: 2px solid #1db954;
+  background: #1db954;
+  outline: none;
+}
+
+#track-list .track.current .track-name,
+#track-list .track.current .track-artists,
+#track-list .track.current .track-dur {
+  color: #0d1117;
 }
 #track-list .track img {
   width: 100%;
@@ -394,4 +401,83 @@ button:hover { border-color: #3d475a; }
   font-size: 10px;
   padding: 3px 8px;
   border-radius: 4px;
+}
+
+.ui-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  max-width: 100%;
+}
+#track-list .track {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+#track-list .track > div {
+  min-width: 0;
+  overflow: hidden;
+}
+#track-list .track .track-unhide {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .65);
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+}
+#player-view .np-title,
+#player-view .np-artists {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.songs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+.songs-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #1db954;
+  color: #0d1117;
+  font-weight: 700;
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgba(29, 185, 84, .45);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.songs-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(29, 185, 84, .65);
+}
+.songs-toggle.active {
+  background: #0d1117;
+  color: #1db954;
+  box-shadow: inset 0 0 0 2px #1db954;
+}
+.songs-row .zoom-group {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
 }

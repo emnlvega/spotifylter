@@ -462,34 +462,12 @@ function renderTracks() {
     meta.querySelector(".track-name").textContent = track.name;
     meta.querySelector(".track-artists").textContent = track.artists;
     meta.querySelector(".track-dur").textContent = formatMs(track.durationMs);
-    const seeks = document.createElement("div");
-    seeks.className = "seek-btns";
-    for (const part of ["A", "B", "C"]) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = part;
-      btn.addEventListener("click", async ev => {
-        ev.stopPropagation();
-        try {
-          const token = await getToken();
-          currentTrack = track;
-          const isCurrent = lastState && lastState.track_window && lastState.track_window.current_track
-            && lastState.track_window.current_track.uri === track.uri;
-          if (isCurrent) await seekPreview(track.durationMs, part);
-          else await playFromGesture(track, token, previewPosition(track.durationMs, part));
-          highlightTracks();
-        } catch (err) {
-          setFeedback(err.message, true);
-        }
-      });
-      seeks.appendChild(btn);
-    }
-    card.append(img, meta, seeks);
+    card.append(img, meta);
     if (hidden) {
       const un = document.createElement("button");
       un.type = "button";
-      un.className = "unhide-btn";
-      un.textContent = "unhide";
+      un.className = "track-unhide";
+      un.textContent = "+";
       un.addEventListener("click", ev => {
         ev.stopPropagation();
         setHidden(name, track.uri, false);
@@ -703,12 +681,11 @@ async function startSession(token) {
   renderGrid();
   renderSourceSelect();
   const name = sourceName();
-  try {
+    try {
     if (!cache[name] || !cache[name].tracks || !cache[name].tracks.length) {
       setStatus("Loading " + name);
       await loadPlaylist(name, token);
     }
-    renderTracks();
     if (!lastState || !lastState.track_window || !lastState.track_window.current_track) {
       const tracks = (cache[name] && cache[name].tracks) || [];
       const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
@@ -717,6 +694,8 @@ async function startSession(token) {
         updatePlayerBar(first);
       }
     }
+    renderTracks();
+    highlightTracks();
   } catch (err) {
     setFeedback(err.message, true);
   }
@@ -1222,19 +1201,126 @@ function importHidden(file) {
   reader.readAsText(file);
 }
 
+async function unhideAll() {
+  const name = sourceName();
+  const map = hiddenMap();
+  const list = (map[name] || []).slice();
+  if (!list.length) return;
+  map[name] = [];
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify(map));
+  renderTracks();
+  renderGrid();
+  try {
+    const token = await getToken();
+    const id = PLAYLISTS[name] && PLAYLISTS[name].id;
+    if (!id) return;
+    await Promise.all(list.map(uri => syncPush(token, id, uri, false).catch(() => null)));
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+}
+
 async function boot() {
   renderGrid();
   buildPlayer();
   el.redirect.textContent = redirectUri();
   el.clientId.value = getClientId();
+  if (!document.getElementById("fa-css")) {
+    const fa = document.createElement("link");
+    fa.id = "fa-css";
+    fa.rel = "stylesheet";
+    fa.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css";
+    document.head.appendChild(fa);
+  }
+
+  const songsRow = document.createElement("div");
+  songsRow.className = "songs-row";
+
   const songsToggle = document.createElement("button");
   songsToggle.type = "button";
-  songsToggle.textContent = "Songs";
+  songsToggle.className = "songs-toggle";
+  const songsIcon = document.createElement("i");
+  songsIcon.className = "fa-solid fa-list-ul";
+  const songsLabel = document.createElement("span");
+  songsLabel.textContent = "Songs";
+  songsToggle.append(songsIcon, songsLabel);
   el.list.style.display = "none";
   songsToggle.addEventListener("click", () => {
-    el.list.style.display = el.list.style.display === "none" ? "grid" : "none";
+    const open = el.list.style.display === "none";
+    el.list.style.display = open ? "grid" : "none";
+    songsToggle.classList.toggle("active", open);
   });
-  el.list.parentElement.insertBefore(songsToggle, el.list);
+
+  const unhideBtn = document.createElement("button");
+  unhideBtn.type = "button";
+  unhideBtn.className = "songs-toggle";
+  unhideBtn.style.background = "#4d6bfe";
+  unhideBtn.style.color = "#ffffff";
+  unhideBtn.style.boxShadow = "0 4px 16px rgba(77,107,254,.45)";
+  const unhideIcon = document.createElement("i");
+  unhideIcon.className = "fa-solid fa-eye";
+  const unhideLabel = document.createElement("span");
+  unhideLabel.textContent = "Unhide all";
+  unhideBtn.append( unhideLabel);
+  unhideBtn.addEventListener("click", () => unhideAll());
+
+  const playerZoom = document.createElement("div");
+  playerZoom.className = "zoom-group";
+  const playerZoomIcon = document.createElement("i");
+  playerZoomIcon.className = "fa-solid fa-music";
+  playerZoomIcon.title = "Player size";
+  const pDown = document.createElement("button");
+  pDown.type = "button";
+  pDown.textContent = "-";
+  const pUp = document.createElement("button");
+  pUp.type = "button";
+  pUp.textContent = "+";
+  const pKey = "sp_player_scale";
+  pDown.addEventListener("click", () => {
+    const v = Math.max(0.6, Number(localStorage.getItem(pKey) || 1) - 0.1);
+    localStorage.setItem(pKey, String(v));
+    applyPlayerScale(v);
+  });
+  pUp.addEventListener("click", () => {
+    const v = Math.min(2, Number(localStorage.getItem(pKey) || 1) + 0.1);
+    localStorage.setItem(pKey, String(v));
+    applyPlayerScale(v);
+  });
+  playerZoom.append(playerZoomIcon, pDown, pUp);
+  applyPlayerScale(localStorage.getItem(pKey) || 1);
+
+  const gridZoom = document.createElement("div");
+  gridZoom.className = "zoom-group";
+  const gridZoomIcon = document.createElement("i");
+  gridZoomIcon.className = "fa-solid fa-table-cells";
+  gridZoomIcon.title = "Grid size";
+  const gDown = document.createElement("button");
+  gDown.type = "button";
+  gDown.textContent = "-";
+  const gUp = document.createElement("button");
+  gUp.type = "button";
+  gUp.textContent = "+";
+  const gKey = "sp_grid_scale";
+  gDown.addEventListener("click", () => {
+    const v = Math.max(0.6, Number(localStorage.getItem(gKey) || 1) - 0.1);
+    localStorage.setItem(gKey, String(v));
+    applyGridScale(v);
+  });
+  gUp.addEventListener("click", () => {
+    const v = Math.min(2, Number(localStorage.getItem(gKey) || 1) + 0.1);
+    localStorage.setItem(gKey, String(v));
+    applyGridScale(v);
+  });
+  gridZoom.append(gridZoomIcon, gDown, gUp);
+  applyGridScale(localStorage.getItem(gKey) || 1);
+
+  songsRow.append(songsToggle, unhideBtn, playerZoom, gridZoom);
+  el.list.parentElement.insertBefore(songsRow, el.list);
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "ui-toolbar";
+  el.refresh.parentElement.appendChild(toolbar);
+
   el.login.addEventListener("click", async () => {
     try {
       await beginLogin(el.clientId.value.trim());
@@ -1272,7 +1358,7 @@ async function boot() {
       setFeedback(err.message, true);
     }
   });
-    el.refresh.addEventListener("click", async () => {
+  el.refresh.addEventListener("click", async () => {
     try {
       const token = await getToken();
       const name = sourceName();
@@ -1295,8 +1381,7 @@ async function boot() {
   const manualBtn = document.createElement("button");
   manualBtn.type = "button";
   manualBtn.textContent = "Manual";
-  manualBtn.style.cssText = "margin-left:8px;";
-  el.refresh.parentElement.appendChild(manualBtn);
+  toolbar.appendChild(manualBtn);
   manualBtn.addEventListener("click", async () => {
     try {
       await openManualPlaylist(await getToken());
@@ -1307,57 +1392,12 @@ async function boot() {
   const hiddenBtn = document.createElement("button");
   hiddenBtn.type = "button";
   hiddenBtn.textContent = "Hidden";
-  hiddenBtn.style.cssText = "margin-left:8px;";
+  toolbar.appendChild(hiddenBtn);
   hiddenBtn.addEventListener("click", () => {
     showHiddenGrid = !showHiddenGrid;
     renderGrid();
   });
-  el.refresh.parentElement.appendChild(hiddenBtn);
-    const playerZoom = document.createElement("div");
-  playerZoom.style.cssText = "display:inline-flex;gap:4px;align-items:center;margin-left:8px;";
-  const pDown = document.createElement("button");
-  pDown.type = "button";
-  pDown.textContent = "-";
-  const pUp = document.createElement("button");
-  pUp.type = "button";
-  pUp.textContent = "+";
-  const pKey = "sp_player_scale";
-  pDown.addEventListener("click", () => {
-    const v = Math.max(0.6, Number(localStorage.getItem(pKey) || 1) - 0.1);
-    localStorage.setItem(pKey, String(v));
-    applyPlayerScale(v);
-  });
-  pUp.addEventListener("click", () => {
-    const v = Math.min(2, Number(localStorage.getItem(pKey) || 1) + 0.1);
-    localStorage.setItem(pKey, String(v));
-    applyPlayerScale(v);
-  });
-  playerZoom.append(pDown, pUp);
-  el.refresh.parentElement.appendChild(playerZoom);
-  applyPlayerScale(localStorage.getItem(pKey) || 1);
 
-  const gridZoom = document.createElement("div");
-  gridZoom.style.cssText = "display:inline-flex;gap:4px;align-items:center;margin-left:8px;";
-  const gDown = document.createElement("button");
-  gDown.type = "button";
-  gDown.textContent = "-";
-  const gUp = document.createElement("button");
-  gUp.type = "button";
-  gUp.textContent = "+";
-  const gKey = "sp_grid_scale";
-  gDown.addEventListener("click", () => {
-    const v = Math.max(0.6, Number(localStorage.getItem(gKey) || 1) - 0.1);
-    localStorage.setItem(gKey, String(v));
-    applyGridScale(v);
-  });
-  gUp.addEventListener("click", () => {
-    const v = Math.min(2, Number(localStorage.getItem(gKey) || 1) + 0.1);
-    localStorage.setItem(gKey, String(v));
-    applyGridScale(v);
-  });
-  gridZoom.append(gDown, gUp);
-  el.refresh.parentElement.appendChild(gridZoom);
-  applyGridScale(localStorage.getItem(gKey) || 1);
   const bar = el.progress.parentElement || el.progress;
   bar.style.cursor = "pointer";
   bar.addEventListener("click", async e => {
