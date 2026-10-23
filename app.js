@@ -1,5 +1,6 @@
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
+const SYNC_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hidden";
 const SCOPES = [
   "streaming",
   "user-read-email",
@@ -623,6 +624,8 @@ function onPlayerState(state) {
       seekPreview(currentTrack.durationMs, part).catch(err => setFeedback(err.message, true));
     }
   }
+  const toggle = document.querySelector("#player-view .np-toggle");
+  if (toggle) toggle.textContent = state.paused ? "PLAY" : "PAUSE";
   if (prev && prev.track_window && prev.track_window.current_track && !prev.paused && state.paused) {
     const prevPos = prev.position + (state.timestamp - prev.timestamp);
     const duration = (currentTrack && currentTrack.durationMs) || prev.duration || 0;
@@ -700,7 +703,8 @@ async function startSession(token) {
     }
     renderTracks();
     if (!lastState || !lastState.track_window || !lastState.track_window.current_track) {
-      const first = cache[name] && cache[name].tracks[0];
+      const tracks = (cache[name] && cache[name].tracks) || [];
+      const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
       if (first) {
         currentTrack = first;
         updatePlayerBar(first);
@@ -813,6 +817,35 @@ async function seekCurrent(part) {
   }
 }
 
+async function syncPull(token) {
+  const res = await fetch(SYNC_URL + "?accessToken=" + encodeURIComponent(token));
+  if (!res.ok) throw new Error("ERROR sync pull " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error("ERROR sync pull " + data.error);
+  const byId = {};
+  for (const [name, entry] of Object.entries(PLAYLISTS)) byId[entry.id] = name;
+  const map = {};
+  for (const row of data.items || []) {
+    const name = byId[row.playlistId];
+    if (!name) continue;
+    if (!map[name]) map[name] = [];
+    if (!map[name].includes(row.trackUri)) map[name].push(row.trackUri);
+  }
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify(map));
+  return map;
+}
+
+async function syncPush(token, playlistId, trackUri, hidden) {
+  const res = await fetch(SYNC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accessToken: token, playlistId, trackUri, hidden })
+  });
+  if (!res.ok) throw new Error("ERROR sync push " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error("ERROR sync push " + data.error);
+}
+
 function hiddenMap() {
   const raw = localStorage.getItem(HIDDEN_KEY);
   return raw ? JSON.parse(raw) : {};
@@ -831,6 +864,12 @@ function setHidden(name, uri, value) {
   if (!value && idx !== -1) list.splice(idx, 1);
   map[name] = list;
   localStorage.setItem(HIDDEN_KEY, JSON.stringify(map));
+  const entry = PLAYLISTS[name];
+  if (entry) {
+    getToken()
+      .then(token => syncPush(token, entry.id, uri, value))
+      .catch(err => setFeedback(err.message, true));
+  }
 }
 
 async function playAdjacent(dir, hide) {
@@ -872,6 +911,8 @@ function buildPlayer() {
     progressWrap.appendChild(el.progress);
   }
   el.bar.style.setProperty("display", "none", "important");
+  el.play.style.setProperty("display", "none", "important");
+  el.pause.style.setProperty("display", "none", "important");
   const oldView = document.getElementById("player-view");
   if (oldView) oldView.remove();
   let styleTag = document.getElementById("player-style");
@@ -889,13 +930,12 @@ function buildPlayer() {
       width: 100%;
     }
     #player-view .np-card {
+      position: relative;
       display: flex;
-      flex-direction: row;
-      align-items: center;
       justify-content: center;
-      gap: 24px;
       width: 100%;
       max-width: 760px;
+      padding: 0 120px;
     }
     #player-view .np-center {
       display: flex;
@@ -929,61 +969,80 @@ function buildPlayer() {
     #player-view .np-progress {
       width: 100%;
     }
-    #player-view .np-controls {
+    #player-view .np-controls,
+    #player-view .np-seeks {
       display: flex;
       gap: 12px;
       align-items: center;
     }
-    #player-view .np-controls button {
-      min-width: 92px;
-      padding: 14px 24px;
-      border-radius: 999px;
-      font-weight: 700;
-      font-size: 15px;
-    }
-    #player-view .np-nav {
-      font-size: 34px;
-      font-weight: 700;
-      line-height: 1;
-      padding: 24px 28px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    #player-view .np-seeks {
-      display: flex;
-      gap: 14px;
-    }
+    #player-view .np-controls button,
     #player-view .np-seeks button {
       min-width: 72px;
-      padding: 16px 0;
+      padding: 16px 14px;
       border-radius: 10px;
-      font-size: 20px;
+      font-size: 16px;
       font-weight: 800;
+      border: none;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    #player-view .np-seeks button {
       background: #ffffff;
       color: #0d1117;
-      border: none;
+      font-size: 20px;
       box-shadow: 0 4px 16px rgba(255,255,255,.18);
-      transition: transform .12s ease, box-shadow .12s ease;
     }
     #player-view .np-seeks button:hover {
       transform: translateY(-1px);
       box-shadow: 0 6px 22px rgba(255,255,255,.3);
+    }
+    #player-view .np-toggle {
+      background: #1db954;
+      color: #0d1117;
+      box-shadow: 0 4px 16px rgba(29,185,84,.35);
+    }
+    #player-view .np-toggle:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 22px rgba(29,185,84,.55);
+    }
+    #player-view .np-nav {
+      background: #4d6bfe;
+      color: #ffffff;
+      box-shadow: 0 4px 16px rgba(77,107,254,.35);
+      position: absolute;
+      height: 520px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 20px;
+    }
+    #player-view .np-nav:hover {
+      transform: translateY(-50%);
+      box-shadow: 0 6px 22px rgba(77,107,254,.55);
+    }
+    #player-view .np-nav-prev { left: 0; }
+    #player-view .np-nav-next { right: 0; }
+    @media (max-width: 720px) {
+      #player-view .np-card { padding: 0; }
+      #player-view .np-nav {
+        position: static;
+        transform: none;
+        font-size: 16px;
+        padding: 16px 14px;
+        height: auto;
+        display: block;
+      }
+      #player-view .np-nav:hover {
+        transform: translateY(-1px);
+      }
+      #player-view .np-art {
+        width: 240px;
+        height: 240px;
+      }
     }
   `;
   const view = document.createElement("div");
   view.id = "player-view";
   const card = document.createElement("div");
   card.className = "np-card";
-  const prev = document.createElement("button");
-  prev.type = "button";
-  prev.className = "np-nav";
-  prev.textContent = "<";
-  prev.addEventListener("click", () => playAdjacent(-1));
-  const next = document.createElement("button");
-  next.type = "button";
-  next.className = "np-nav";
-  next.textContent = ">";
-  next.addEventListener("click", () => playAdjacent(1));
   const center = document.createElement("div");
   center.className = "np-center";
   el.art.className = "np-art";
@@ -993,10 +1052,46 @@ function buildPlayer() {
   center.append(el.art, el.title, el.artists, progressWrap, el.time);
   const controls = document.createElement("div");
   controls.className = "np-controls";
-  controls.append(el.play, el.pause);
+  const prev = document.createElement("button");
+  prev.type = "button";
+  prev.className = "np-nav np-nav-prev";
+  prev.textContent = "<";
+  prev.addEventListener("click", () => playAdjacent(-1));
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "np-nav np-nav-next";
+  next.textContent = ">";
+  next.addEventListener("click", () => playAdjacent(1));
+    const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "np-toggle";
+  toggle.textContent = "PLAY";
+  toggle.addEventListener("click", async () => {
+    if (!player) return;
+    await player.activateElement();
+    const sdkTrack = lastState && lastState.track_window && lastState.track_window.current_track;
+    if (currentTrack && (!sdkTrack || sdkTrack.uri !== currentTrack.uri)) {
+      try {
+        await playFromGesture(currentTrack, await getToken());
+        updatePlayerBar(currentTrack);
+        highlightTracks();
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
+      return;
+    }
+    player.togglePlay();
+  });
+  controls.append(prev, toggle, next);
   center.appendChild(controls);
   const seeks = document.createElement("div");
   seeks.className = "np-seeks";
+    const rnd = document.createElement("button");
+  rnd.type = "button";
+  rnd.textContent = "RND";
+  rnd.style.cssText = "background:#8b5cf6;color:#ffffff;";
+  rnd.addEventListener("click", () => playRandom());
+  seeks.appendChild(rnd);
   for (const part of ["A", "B", "C"]) {
     const b = document.createElement("button");
     b.type = "button";
@@ -1005,11 +1100,66 @@ function buildPlayer() {
     seeks.appendChild(b);
   }
   center.appendChild(seeks);
-  card.append(prev, center, next);
+  card.appendChild(center);
   view.appendChild(card);
   const gridParent = el.grid && el.grid.parentElement;
   if (gridParent) gridParent.insertBefore(view, el.grid);
   else document.body.appendChild(view);
+}
+
+function applyPlayerScale(v) {
+  const view = document.getElementById("player-view");
+  if (view) view.style.zoom = String(v);
+}
+
+function applyGridScale(v) {
+  el.grid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${Math.round(140 * v)}px, 1fr))`;
+}
+
+async function playRandom() {
+  const name = sourceName();
+  const tracks = ((cache[name] && cache[name].tracks) || []).filter(t => !isHidden(name, t.uri));
+  if (!tracks.length) {
+    setFeedback("ERROR no visible tracks", true);
+    return;
+  }
+  const track = tracks[Math.floor(Math.random() * tracks.length)];
+  try {
+    const token = await getToken();
+    currentTrack = track;
+    await playFromGesture(track, token);
+    updatePlayerBar(track);
+    renderTracks();
+    highlightTracks();
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+}
+
+function exportHidden() {
+  const blob = new Blob([JSON.stringify(hiddenMap(), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "hidden-" + new Date().toISOString().slice(0, 10) + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importHidden(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("ERROR invalid file");
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify(data));
+      renderTracks();
+      renderGrid();
+      setFeedback("hidden imported", false);
+    } catch (err) {
+      setFeedback(err.message, true);
+    }
+  };
+  reader.readAsText(file);
 }
 
 async function boot() {
@@ -1051,7 +1201,8 @@ async function boot() {
         setStatus("Ready · Playlist Filter");
       }
       renderTracks();
-      const first = cache[name] && cache[name].tracks[0];
+      const tracks = (cache[name] && cache[name].tracks) || [];
+      const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
       if (first && (!lastState || !lastState.track_window || !lastState.track_window.current_track)) {
         currentTrack = first;
         updatePlayerBar(first);
@@ -1074,13 +1225,11 @@ async function boot() {
     } catch (err) {
       setFeedback(err.message, true);
     }
-  });
-  el.play.addEventListener("click", async () => {
-    if (player) await player.activateElement();
-    if (player) player.togglePlay();
-  });
-  el.pause.addEventListener("click", () => {
-    if (player) player.togglePlay();
+      try {
+    await syncPull(token);
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
   });
   const manualBtn = document.createElement("button");
   manualBtn.type = "button";
@@ -1094,7 +1243,7 @@ async function boot() {
       setFeedback(err.message, true);
     }
   });
-    const hiddenBtn = document.createElement("button");
+  const hiddenBtn = document.createElement("button");
   hiddenBtn.type = "button";
   hiddenBtn.textContent = "Hidden";
   hiddenBtn.style.cssText = "margin-left:8px;";
@@ -1103,6 +1252,51 @@ async function boot() {
     renderGrid();
   });
   el.refresh.parentElement.appendChild(hiddenBtn);
+    const playerZoom = document.createElement("div");
+  playerZoom.style.cssText = "display:inline-flex;gap:4px;align-items:center;margin-left:8px;";
+  const pDown = document.createElement("button");
+  pDown.type = "button";
+  pDown.textContent = "-";
+  const pUp = document.createElement("button");
+  pUp.type = "button";
+  pUp.textContent = "+";
+  const pKey = "sp_player_scale";
+  pDown.addEventListener("click", () => {
+    const v = Math.max(0.6, Number(localStorage.getItem(pKey) || 1) - 0.1);
+    localStorage.setItem(pKey, String(v));
+    applyPlayerScale(v);
+  });
+  pUp.addEventListener("click", () => {
+    const v = Math.min(2, Number(localStorage.getItem(pKey) || 1) + 0.1);
+    localStorage.setItem(pKey, String(v));
+    applyPlayerScale(v);
+  });
+  playerZoom.append(pDown, pUp);
+  el.refresh.parentElement.appendChild(playerZoom);
+  applyPlayerScale(localStorage.getItem(pKey) || 1);
+
+  const gridZoom = document.createElement("div");
+  gridZoom.style.cssText = "display:inline-flex;gap:4px;align-items:center;margin-left:8px;";
+  const gDown = document.createElement("button");
+  gDown.type = "button";
+  gDown.textContent = "-";
+  const gUp = document.createElement("button");
+  gUp.type = "button";
+  gUp.textContent = "+";
+  const gKey = "sp_grid_scale";
+  gDown.addEventListener("click", () => {
+    const v = Math.max(0.6, Number(localStorage.getItem(gKey) || 1) - 0.1);
+    localStorage.setItem(gKey, String(v));
+    applyGridScale(v);
+  });
+  gUp.addEventListener("click", () => {
+    const v = Math.min(2, Number(localStorage.getItem(gKey) || 1) + 0.1);
+    localStorage.setItem(gKey, String(v));
+    applyGridScale(v);
+  });
+  gridZoom.append(gDown, gUp);
+  el.refresh.parentElement.appendChild(gridZoom);
+  applyGridScale(localStorage.getItem(gKey) || 1);
   const bar = el.progress.parentElement || el.progress;
   bar.style.cursor = "pointer";
   bar.addEventListener("click", async e => {
