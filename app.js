@@ -64,6 +64,8 @@ let currentTrack = null;
 let pendingSeek = null;
 let lastState = null;
 let progressTimer = null;
+let shuffleOn = localStorage.getItem("sp_shuffle") === "1";
+let shuffleQueue = [];
 
 const el = {
   status: document.getElementById("status-line"),
@@ -822,10 +824,14 @@ async function syncPull(token) {
   if (!res.ok) throw new Error("ERROR sync pull " + res.status);
   const data = await res.json();
   if (data.error) throw new Error("ERROR sync pull " + data.error);
+  const items = data.items || [];
+  const local = hiddenMap();
+  const localCount = Object.values(local).reduce((n, l) => n + l.length, 0);
+  if (!items.length && localCount > 0) return local;
   const byId = {};
   for (const [name, entry] of Object.entries(PLAYLISTS)) byId[entry.id] = name;
   const map = {};
-  for (const row of data.items || []) {
+  for (const row of items) {
     const name = byId[row.playlistId];
     if (!name) continue;
     if (!map[name]) map[name] = [];
@@ -872,7 +878,36 @@ function setHidden(name, uri, value) {
   }
 }
 
+function resetShuffleQueue(name, exclude) {
+  const tracks = ((cache[name] && cache[name].tracks) || []).filter(t => !isHidden(name, t.uri) && t.uri !== exclude);
+  shuffleQueue = tracks.map(t => t.uri).sort(() => Math.random() - 0.5);
+}
+
+async function playNextShuffled(hide) {
+  const name = sourceName();
+  const tracks = ((cache[name] && cache[name].tracks) || []).filter(t => !isHidden(name, t.uri));
+  if (!tracks.length) return;
+  if (hide !== false && currentTrack) setHidden(name, currentTrack.uri, true);
+  const valid = new Set(tracks.map(t => t.uri));
+  shuffleQueue = shuffleQueue.filter(u => valid.has(u));
+  if (!shuffleQueue.length) resetShuffleQueue(name, currentTrack && currentTrack.uri);
+  const uri = shuffleQueue.shift();
+  const track = tracks.find(t => t.uri === uri);
+  if (!track) return;
+  try {
+    const token = await getToken();
+    currentTrack = track;
+    await playFromGesture(track, token);
+    updatePlayerBar(track);
+    renderTracks();
+    highlightTracks();
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+}
+
 async function playAdjacent(dir, hide) {
+  if (shuffleOn && dir === 1) return playNextShuffled(hide);
   const name = sourceName();
   const tracks = (cache[name] && cache[name].tracks) || [];
   if (!tracks.length || !currentTrack) return;
@@ -1068,19 +1103,30 @@ function buildPlayer() {
   toggle.textContent = "PLAY";
   toggle.addEventListener("click", async () => {
     if (!player) return;
-    await player.activateElement();
-    const sdkTrack = lastState && lastState.track_window && lastState.track_window.current_track;
-    if (currentTrack && (!sdkTrack || sdkTrack.uri !== currentTrack.uri)) {
-      try {
-        await playFromGesture(currentTrack, await getToken());
+    try {
+      await player.activateElement();
+      const token = await getToken();
+      if (lastState && !lastState.paused) {
+        await fetch("https://api.spotify.com/v1/me/player/pause", {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        return;
+      }
+      const sdkTrack = lastState && lastState.track_window && lastState.track_window.current_track;
+      if (!sdkTrack && currentTrack) {
+        await playFromGesture(currentTrack, token);
         updatePlayerBar(currentTrack);
         highlightTracks();
-      } catch (err) {
-        setFeedback(err.message, true);
+        return;
       }
-      return;
+      await fetch("https://api.spotify.com/v1/me/player/play?device_id=" + deviceId, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (err) {
+      setFeedback(err.message, true);
     }
-    player.togglePlay();
   });
   controls.append(prev, toggle, next);
   center.appendChild(controls);
@@ -1088,9 +1134,18 @@ function buildPlayer() {
   seeks.className = "np-seeks";
     const rnd = document.createElement("button");
   rnd.type = "button";
-  rnd.textContent = "RND";
-  rnd.style.cssText = "background:#8b5cf6;color:#ffffff;";
-  rnd.addEventListener("click", () => playRandom());
+  const paintRnd = () => {
+    rnd.textContent = shuffleOn ? "SHUF ON" : "SHUF OFF";
+    rnd.style.background = shuffleOn ? "#8b5cf6" : "#3a3f4b";
+    rnd.style.color = "#ffffff";
+  };
+  paintRnd();
+  rnd.addEventListener("click", () => {
+    shuffleOn = !shuffleOn;
+    localStorage.setItem("sp_shuffle", shuffleOn ? "1" : "0");
+    if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
+    paintRnd();
+  });
   seeks.appendChild(rnd);
   for (const part of ["A", "B", "C"]) {
     const b = document.createElement("button");
@@ -1212,24 +1267,25 @@ async function boot() {
       setFeedback(err.message, true);
     }
   });
-  el.refresh.addEventListener("click", async () => {
+    el.refresh.addEventListener("click", async () => {
     try {
       const token = await getToken();
       const name = sourceName();
       setStatus("Refreshing " + name);
       await loadPlaylist(name, token);
+      try {
+        await syncPull(token);
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
       setStatus("Ready · Playlist Filter");
       renderSourceSelect();
       el.source.value = name;
       renderTracks();
+      renderGrid();
     } catch (err) {
       setFeedback(err.message, true);
     }
-      try {
-    await syncPull(token);
-  } catch (err) {
-    setFeedback(err.message, true);
-  }
   });
   const manualBtn = document.createElement("button");
   manualBtn.type = "button";
