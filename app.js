@@ -66,6 +66,7 @@ let lastState = null;
 let progressTimer = null;
 let shuffleOn = localStorage.getItem("sp_shuffle") === "1";
 let shuffleQueue = [];
+let hideOnSkip = localStorage.getItem("sp_hide_on_skip") !== "0";
 
 const el = {
   status: document.getElementById("status-line"),
@@ -426,7 +427,69 @@ async function addTrack(track, selectedName, token) {
 }
 
 function sourceName() {
-  return el.source.value || localStorage.getItem(SOURCE_KEY) || SOURCE_CANDIDATES[0];
+  const saved = localStorage.getItem(SOURCE_KEY);
+  if (saved && SOURCE_CANDIDATES.includes(saved)) return saved;
+  return SOURCE_CANDIDATES[0];
+}
+
+function sourceName() {
+  const saved = localStorage.getItem(SOURCE_KEY);
+  if (saved && SOURCE_CANDIDATES.includes(saved)) return saved;
+  return SOURCE_CANDIDATES[0];
+}
+
+function renderSourceGrid() {
+  let grid = document.getElementById("source-grid");
+  if (!grid) {
+    grid = document.createElement("div");
+    grid.id = "source-grid";
+    el.source.parentElement.insertBefore(grid, el.source);
+  }
+  grid.innerHTML = "";
+  const saved = sourceName();
+  for (const name of SOURCE_CANDIDATES) {
+    const entry = PLAYLISTS[name] || cache[name];
+    if (!entry) continue;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.name = name;
+    btn.className = "source-tile" + (name === saved ? " active" : "");
+    const img = document.createElement("img");
+    img.alt = "";
+    bindImg(img, entry.image || (cache[name] && cache[name].image));
+    const label = document.createElement("span");
+    label.textContent = entry.label || name;
+    btn.append(img, label);
+    btn.addEventListener("click", () => selectSource(name));
+    grid.appendChild(btn);
+  }
+  el.source.style.display = "none";
+}
+
+async function selectSource(name) {
+  localStorage.setItem(SOURCE_KEY, name);
+  const grid = document.getElementById("source-grid");
+  if (grid) {
+    for (const b of grid.children) b.classList.toggle("active", b.dataset.name === name);
+  }
+  try {
+    const token = await getToken();
+    if (!cache[name] || !cache[name].tracks || !cache[name].tracks.length) {
+      setStatus("Loading " + name);
+      await loadPlaylist(name, token);
+      setStatus("Ready · Playlist Filter");
+    }
+    renderTracks();
+    const tracks = (cache[name] && cache[name].tracks) || [];
+    const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
+    if (first && (!lastState || !lastState.track_window || !lastState.track_window.current_track)) {
+      currentTrack = first;
+      updatePlayerBar(first);
+    }
+    highlightTracks();
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
 }
 
 function renderSourceSelect() {
@@ -589,6 +652,12 @@ function onPlayerState(state) {
   lastState = state;
   if (!state) return;
   const sdkTrack = state.track_window.current_track;
+  const prevUri = prev && prev.track_window && prev.track_window.current_track
+    ? prev.track_window.current_track.uri
+    : null;
+  if (sdkTrack && sdkTrack.uri !== prevUri) {
+    document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.add("active"));
+  }
   if (sdkTrack) {
     const fromCache = findCachedTrack(sdkTrack.uri);
     if (fromCache) currentTrack = fromCache;
@@ -604,8 +673,8 @@ function onPlayerState(state) {
       seekPreview(currentTrack.durationMs, part).catch(err => setFeedback(err.message, true));
     }
   }
-  const toggle = document.querySelector("#player-view .np-toggle");
-  if (toggle) toggle.textContent = state.paused ? "PLAY" : "PAUSE";
+  const toggleIcon = document.querySelector("#player-view .np-toggle i");
+  if (toggleIcon) toggleIcon.className = state.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
   if (prev && prev.track_window && prev.track_window.current_track && !prev.paused && state.paused) {
     const prevPos = prev.position + (state.timestamp - prev.timestamp);
     const duration = (currentTrack && currentTrack.durationMs) || prev.duration || 0;
@@ -679,9 +748,9 @@ async function startSession(token) {
     setFeedback(err.message, true);
   }
   renderGrid();
-  renderSourceSelect();
+  renderSourceGrid();
   const name = sourceName();
-    try {
+  try {
     if (!cache[name] || !cache[name].tracks || !cache[name].tracks.length) {
       setStatus("Loading " + name);
       await loadPlaylist(name, token);
@@ -871,23 +940,45 @@ async function playNextShuffled(hide) {
   const name = sourceName();
   const tracks = ((cache[name] && cache[name].tracks) || []).filter(t => !isHidden(name, t.uri));
   if (!tracks.length) return;
-  if (hide !== false && currentTrack) setHidden(name, currentTrack.uri, true);
+  const original = currentTrack;
+  if (hide !== false && original) setHidden(name, original.uri, true);
+  const token = await getToken();
   const valid = new Set(tracks.map(t => t.uri));
   shuffleQueue = shuffleQueue.filter(u => valid.has(u));
-  if (!shuffleQueue.length) resetShuffleQueue(name, currentTrack && currentTrack.uri);
-  const uri = shuffleQueue.shift();
-  const track = tracks.find(t => t.uri === uri);
-  if (!track) return;
-  try {
-    const token = await getToken();
-    currentTrack = track;
-    await playFromGesture(track, token);
-    updatePlayerBar(track);
-    renderTracks();
-    highlightTracks();
-  } catch (err) {
-    setFeedback(err.message, true);
+  const tried = new Set();
+  while (tried.size < tracks.length) {
+    if (!shuffleQueue.length) resetShuffleQueue(name, original && original.uri);
+    if (!shuffleQueue.length) break;
+    const uri = shuffleQueue.shift();
+    if (tried.has(uri)) continue;
+    tried.add(uri);
+    const track = tracks.find(t => t.uri === uri);
+    if (!track) continue;
+    try {
+      await playFromGesture(track, token);
+      currentTrack = track;
+      updatePlayerBar(track);
+      renderTracks();
+      highlightTracks();
+      return;
+    } catch (err) {
+      if (isUnplayable(err)) continue;
+      currentTrack = original;
+      updatePlayerBar(original);
+      setFeedback(err.message, true);
+      renderTracks();
+      return;
+    }
   }
+  currentTrack = original;
+  if (hide !== false && original) setHidden(name, original.uri, false);
+  updatePlayerBar(original);
+  renderTracks();
+  setFeedback("ERROR no playable track", true);
+}
+
+function isUnplayable(err) {
+  return /ERROR play (400|403|404)/.test(String(err && err.message || ""));
 }
 
 async function playAdjacent(dir, hide) {
@@ -895,32 +986,39 @@ async function playAdjacent(dir, hide) {
   const name = sourceName();
   const tracks = (cache[name] && cache[name].tracks) || [];
   if (!tracks.length || !currentTrack) return;
-  if (dir === 1 && hide !== false) setHidden(name, currentTrack.uri, true);
-  let idx = tracks.findIndex(t => t.uri === currentTrack.uri);
+  const original = currentTrack;
+  if (dir === 1 && hide !== false) setHidden(name, original.uri, true);
+  const token = await getToken();
+  const tried = new Set();
+  let idx = tracks.findIndex(t => t.uri === original.uri);
   if (idx === -1) idx = 0;
-  let next = null;
-  const len = tracks.length;
-  for (let step = 0; step < len; step++) {
-    idx = (idx + dir + len) % len;
-    if (!isHidden(name, tracks[idx].uri)) {
-      next = tracks[idx];
-      break;
+  for (let step = 0; step < tracks.length; step++) {
+    idx = (idx + dir + tracks.length) % tracks.length;
+    const candidate = tracks[idx];
+    if (tried.has(candidate.uri)) break;
+    tried.add(candidate.uri);
+    if (isHidden(name, candidate.uri)) continue;
+    try {
+      await playFromGesture(candidate, token);
+      currentTrack = candidate;
+      updatePlayerBar(candidate);
+      renderTracks();
+      highlightTracks();
+      return;
+    } catch (err) {
+      if (isUnplayable(err)) continue;
+      currentTrack = original;
+      updatePlayerBar(original);
+      setFeedback(err.message, true);
+      renderTracks();
+      return;
     }
   }
-  if (!next) {
-    renderTracks();
-    return;
-  }
-  try {
-    const token = await getToken();
-    currentTrack = next;
-    await playFromGesture(next, token);
-    updatePlayerBar(next);
-    renderTracks();
-    highlightTracks();
-  } catch (err) {
-    setFeedback(err.message, true);
-  }
+  currentTrack = original;
+  if (dir === 1 && hide !== false) setHidden(name, original.uri, false);
+  updatePlayerBar(original);
+  renderTracks();
+  setFeedback("ERROR no playable track", true);
 }
 
 function buildPlayer() {
@@ -934,130 +1032,6 @@ function buildPlayer() {
   el.pause.style.setProperty("display", "none", "important");
   const oldView = document.getElementById("player-view");
   if (oldView) oldView.remove();
-  let styleTag = document.getElementById("player-style");
-  if (!styleTag) {
-    styleTag = document.createElement("style");
-    styleTag.id = "player-style";
-    document.head.appendChild(styleTag);
-  }
-  styleTag.textContent = `
-    #player-view {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 32px 0;
-      width: 100%;
-    }
-    #player-view .np-card {
-      position: relative;
-      display: flex;
-      justify-content: center;
-      width: 100%;
-      max-width: 760px;
-      padding: 0 120px;
-    }
-    #player-view .np-center {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-      flex: 1;
-      max-width: 480px;
-    }
-    #player-view .np-art {
-      width: 340px;
-      height: 340px;
-      object-fit: cover;
-      border-radius: 14px;
-      box-shadow: 0 16px 50px rgba(0,0,0,.55);
-      display: block;
-    }
-    #player-view .np-title {
-      margin: 0;
-      font-size: 26px;
-      font-weight: 700;
-      text-align: center;
-      line-height: 1.2;
-    }
-    #player-view .np-artists {
-      margin: 0;
-      font-size: 16px;
-      opacity: .7;
-      text-align: center;
-    }
-    #player-view .np-progress {
-      width: 100%;
-    }
-    #player-view .np-controls,
-    #player-view .np-seeks {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-    }
-    #player-view .np-controls button,
-    #player-view .np-seeks button {
-      min-width: 72px;
-      padding: 16px 14px;
-      border-radius: 10px;
-      font-size: 16px;
-      font-weight: 800;
-      border: none;
-      transition: transform .12s ease, box-shadow .12s ease;
-    }
-    #player-view .np-seeks button {
-      background: #ffffff;
-      color: #0d1117;
-      font-size: 20px;
-      box-shadow: 0 4px 16px rgba(255,255,255,.18);
-    }
-    #player-view .np-seeks button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 22px rgba(255,255,255,.3);
-    }
-    #player-view .np-toggle {
-      background: #1db954;
-      color: #0d1117;
-      box-shadow: 0 4px 16px rgba(29,185,84,.35);
-    }
-    #player-view .np-toggle:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 22px rgba(29,185,84,.55);
-    }
-    #player-view .np-nav {
-      background: #4d6bfe;
-      color: #ffffff;
-      box-shadow: 0 4px 16px rgba(77,107,254,.35);
-      position: absolute;
-      height: 520px;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 20px;
-    }
-    #player-view .np-nav:hover {
-      transform: translateY(-50%);
-      box-shadow: 0 6px 22px rgba(77,107,254,.55);
-    }
-    #player-view .np-nav-prev { left: 0; }
-    #player-view .np-nav-next { right: 0; }
-    @media (max-width: 720px) {
-      #player-view .np-card { padding: 0; }
-      #player-view .np-nav {
-        position: static;
-        transform: none;
-        font-size: 16px;
-        padding: 16px 14px;
-        height: auto;
-        display: block;
-      }
-      #player-view .np-nav:hover {
-        transform: translateY(-1px);
-      }
-      #player-view .np-art {
-        width: 240px;
-        height: 240px;
-      }
-    }
-  `;
   const view = document.createElement("div");
   view.id = "player-view";
   const card = document.createElement("div");
@@ -1074,17 +1048,17 @@ function buildPlayer() {
   const prev = document.createElement("button");
   prev.type = "button";
   prev.className = "np-nav np-nav-prev";
-  prev.textContent = "<";
+  prev.innerHTML = '<i class="fa-solid fa-backward-step"></i>';
   prev.addEventListener("click", () => playAdjacent(-1));
   const next = document.createElement("button");
   next.type = "button";
   next.className = "np-nav np-nav-next";
-  next.textContent = ">";
-  next.addEventListener("click", () => playAdjacent(1));
-    const toggle = document.createElement("button");
+  next.innerHTML = '<i class="fa-solid fa-forward-step"></i>';
+  next.addEventListener("click", () => playAdjacent(1, hideOnSkip));
+  const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "np-toggle";
-  toggle.textContent = "PLAY";
+  toggle.innerHTML = '<i class="fa-solid fa-play"></i>';
   toggle.addEventListener("click", async () => {
     if (!player) return;
     try {
@@ -1116,12 +1090,36 @@ function buildPlayer() {
   center.appendChild(controls);
   const seeks = document.createElement("div");
   seeks.className = "np-seeks";
+    const presetPill = document.createElement("div");
+  presetPill.className = "np-preset-pill";
+  const presets = [["A", "1"], ["B", "2"], ["C", "3"]];
+  const presetBtns = {};
+  const paintPresets = mode => {
+    for (const [p, btn] of Object.entries(presetBtns)) {
+      btn.classList.toggle("active", !mode || p === mode);
+    }
+  };
+  for (const [part] of presets) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.title = part;
+    b.className = "np-preset";
+    b.textContent = "";
+    b.addEventListener("click", () => {
+      paintPresets(part);
+      seekCurrent(part);
+    });
+    presetBtns[part] = b;
+    presetPill.appendChild(b);
+  }
+  paintPresets(null);
+  seeks.appendChild(presetPill);
     const rnd = document.createElement("button");
   rnd.type = "button";
+  rnd.className = "np-shuffle";
   const paintRnd = () => {
-    rnd.textContent = shuffleOn ? "SHUF ON" : "SHUF OFF";
-    rnd.style.background = shuffleOn ? "#8b5cf6" : "#3a3f4b";
-    rnd.style.color = "#ffffff";
+    rnd.innerHTML = '<i class="fa-solid fa-shuffle"></i>';
+    rnd.classList.toggle("active", shuffleOn);
   };
   paintRnd();
   rnd.addEventListener("click", () => {
@@ -1130,14 +1128,7 @@ function buildPlayer() {
     if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
     paintRnd();
   });
-  seeks.appendChild(rnd);
-  for (const part of ["A", "B", "C"]) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = part;
-    b.addEventListener("click", () => seekCurrent(part));
-    seeks.appendChild(b);
-  }
+  controls.append(prev, toggle, rnd, next);
   center.appendChild(seeks);
   card.appendChild(center);
   view.appendChild(card);
@@ -1239,11 +1230,7 @@ async function boot() {
   const songsToggle = document.createElement("button");
   songsToggle.type = "button";
   songsToggle.className = "songs-toggle";
-  const songsIcon = document.createElement("i");
-  songsIcon.className = "fa-solid fa-list-ul";
-  const songsLabel = document.createElement("span");
-  songsLabel.textContent = "Songs";
-  songsToggle.append(songsIcon, songsLabel);
+  songsToggle.innerHTML = '<i class="fa-solid fa-list-ul"></i><span>Songs</span>';
   el.list.style.display = "none";
   songsToggle.addEventListener("click", () => {
     const open = el.list.style.display === "none";
@@ -1253,16 +1240,23 @@ async function boot() {
 
   const unhideBtn = document.createElement("button");
   unhideBtn.type = "button";
-  unhideBtn.className = "songs-toggle";
-  unhideBtn.style.background = "#4d6bfe";
-  unhideBtn.style.color = "#ffffff";
-  unhideBtn.style.boxShadow = "0 4px 16px rgba(77,107,254,.45)";
-  const unhideIcon = document.createElement("i");
-  unhideIcon.className = "fa-solid fa-eye";
+  unhideBtn.className = "songs-toggle action";
   const unhideLabel = document.createElement("span");
   unhideLabel.textContent = "Unhide all";
-  unhideBtn.append( unhideLabel);
+  unhideBtn.append(unhideLabel);
   unhideBtn.addEventListener("click", () => unhideAll());
+
+  const skipToggle = document.createElement("button");
+  skipToggle.type = "button";
+  skipToggle.className = "skip-toggle";
+  skipToggle.innerHTML = '<i class="fa-solid fa-eye-slash"></i><span>Skip hides</span>';
+  const paintSkip = () => skipToggle.classList.toggle("on", hideOnSkip);
+  paintSkip();
+  skipToggle.addEventListener("click", () => {
+    hideOnSkip = !hideOnSkip;
+    localStorage.setItem("sp_hide_on_skip", hideOnSkip ? "1" : "0");
+    paintSkip();
+  });
 
   const playerZoom = document.createElement("div");
   playerZoom.className = "zoom-group";
@@ -1314,7 +1308,7 @@ async function boot() {
   gridZoom.append(gridZoomIcon, gDown, gUp);
   applyGridScale(localStorage.getItem(gKey) || 1);
 
-  songsRow.append(songsToggle, unhideBtn, playerZoom, gridZoom);
+  songsRow.append(songsToggle, unhideBtn, skipToggle, playerZoom, gridZoom);
   el.list.parentElement.insertBefore(songsRow, el.list);
 
   const toolbar = document.createElement("div");
@@ -1336,28 +1330,6 @@ async function boot() {
       showAuth(err.message);
     }
   });
-  el.source.addEventListener("change", async () => {
-    const name = el.source.value;
-    localStorage.setItem(SOURCE_KEY, name);
-    try {
-      const token = await getToken();
-      if (!cache[name] || !cache[name].tracks || !cache[name].tracks.length) {
-        setStatus("Loading " + name);
-        await loadPlaylist(name, token);
-        setStatus("Ready · Playlist Filter");
-      }
-      renderTracks();
-      const tracks = (cache[name] && cache[name].tracks) || [];
-      const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
-      if (first && (!lastState || !lastState.track_window || !lastState.track_window.current_track)) {
-        currentTrack = first;
-        updatePlayerBar(first);
-      }
-      highlightTracks();
-    } catch (err) {
-      setFeedback(err.message, true);
-    }
-  });
   el.refresh.addEventListener("click", async () => {
     try {
       const token = await getToken();
@@ -1370,8 +1342,7 @@ async function boot() {
         setFeedback(err.message, true);
       }
       setStatus("Ready · Playlist Filter");
-      renderSourceSelect();
-      el.source.value = name;
+      renderSourceGrid();
       renderTracks();
       renderGrid();
     } catch (err) {
@@ -1402,6 +1373,7 @@ async function boot() {
   bar.style.cursor = "pointer";
   bar.addEventListener("click", async e => {
     if (!player || !currentTrack) return;
+        document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.add("active"));
     const rect = bar.getBoundingClientRect();
     const fraction = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const duration = currentTrack.durationMs || (lastState && lastState.duration) || 1;
