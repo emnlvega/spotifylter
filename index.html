@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Playlist Filter</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div>
+        <h1>Playlist Filter</h1>
+        <p id="status-line" class="status-line">Not signed in</p>
+      </div>
+    </header>
+
+    <section id="auth-box" class="auth-box">
+      <label for="client-id-input">Client ID</label>
+      <input id="client-id-input" type="text" spellcheck="false" autocomplete="off" placeholder="From the Spotify Developer Dashboard" />
+      <button id="login-btn" type="button">Log in with Spotify</button>
+      <p class="hint">The dashboard Client ID is not an API token. Log in here, and add this Redirect URI in the app settings <strong>exactly</strong>:</p>
+      <code id="redirect-uri-display"></code>
+      <label for="token-input" class="token-label">Or paste a user access token</label>
+      <textarea id="token-input" rows="3" spellcheck="false" placeholder="Optional. A Client ID pasted here will 401."></textarea>
+      <button id="token-btn" type="button">Use token</button>
+    </section>
+
+    <section id="main" class="main hidden">
+      <div class="source-row">
+        <label for="source-select">Source</label>
+        <select id="source-select"></select>
+        <button id="refresh-btn" type="button" title="Re-fetch this playlist">Refresh</button>
+      </div>
+
+      <div id="track-list" class="track-list" role="list"></div>
+
+      <div class="targets">
+        <p class="targets-label">Add current track</p>
+        <div id="target-grid" class="target-grid"></div>
+        <p id="feedback" class="feedback" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <footer id="player-bar" class="player-bar hidden">
+      <div class="player-meta">
+        <img id="player-art" alt="" />
+        <div>
+          <p id="player-title">No track</p>
+          <p id="player-artists"></p>
+        </div>
+      </div>
+      <div class="player-controls">
+        <button id="play-btn" type="button">Play</button>
+        <button id="pause-btn" type="button">Pause</button>
+        <span id="player-time">0:00 / 0:00</span>
+      </div>
+      <div class="progress-wrap">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+    </footer>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
