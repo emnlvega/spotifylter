@@ -67,6 +67,15 @@ let progressTimer = null;
 let shuffleOn = localStorage.getItem("sp_shuffle") === "1";
 let shuffleQueue = [];
 let hideOnSkip = localStorage.getItem("sp_hide_on_skip") !== "0";
+let pendingTrackUri = null;
+
+function currentPlayingUri() {
+  if (pendingTrackUri) return pendingTrackUri;
+  if (lastState && lastState.track_window && lastState.track_window.current_track) {
+    return lastState.track_window.current_track.uri;
+  }
+  return currentTrack && currentTrack.uri;
+}
 
 const el = {
   status: document.getElementById("status-line"),
@@ -270,6 +279,7 @@ async function loadPlaylist(name, token) {
   const match = raw.match(/([0-9A-Za-z]{22})(?:[?/]|$)/);
   const id = match ? match[1] : raw;
   const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${id}`, {
+    cache: "no-store",
     headers: { Authorization: `Bearer ${token}` }
   });
   if (!metaRes.ok) throw new Error("ERROR meta " + name + " " + metaRes.status);
@@ -277,7 +287,10 @@ async function loadPlaylist(name, token) {
   const tracks = [];
   let url = `https://api.spotify.com/v1/playlists/${id}/items?limit=100`;
   while (url) {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(url, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` }
+    });
     if (!res.ok) throw new Error("ERROR load " + name + " " + res.status);
     const data = await res.json();
     for (const row of data.items) {
@@ -378,13 +391,19 @@ function initPlayer(onState) {
   });
 }
 
-async function playTrack(trackUri, token, positionMs) {
+async function playTrack(trackUri, token, positionMs, attempt = 1) {
   const transfer = await fetch("https://api.spotify.com/v1/me/player", {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ device_ids: [deviceId], play: false })
   });
-  if (!transfer.ok && transfer.status !== 204) throw new Error("ERROR transfer " + transfer.status);
+  if (!transfer.ok && transfer.status !== 204) {
+    if (attempt < 3 && (transfer.status >= 500 || transfer.status === 429)) {
+      await new Promise(r => setTimeout(r, 500 * attempt));
+      return playTrack(trackUri, token, positionMs, attempt + 1);
+    }
+    throw new Error("ERROR transfer " + transfer.status);
+  }
   const body = { uris: [trackUri] };
   if (typeof positionMs === "number") body.position_ms = positionMs;
   const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
@@ -392,7 +411,13 @@ async function playTrack(trackUri, token, positionMs) {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
-  if (!res.ok && res.status !== 204) throw new Error("ERROR play " + res.status);
+  if (!res.ok && res.status !== 204) {
+    if (attempt < 3 && (res.status >= 500 || res.status === 429)) {
+      await new Promise(r => setTimeout(r, 500 * attempt));
+      return playTrack(trackUri, token, positionMs, attempt + 1);
+    }
+    throw new Error("ERROR play " + res.status);
+  }
 }
 
 function previewPosition(durationMs, part) {
@@ -407,22 +432,37 @@ function seekPreview(durationMs, part) {
 
 async function playFromGesture(track, token, positionMs) {
   if (player) await player.activateElement();
-  await playTrack(track.uri, token, positionMs);
+  pendingTrackUri = track.uri;
+  try {
+    await playTrack(track.uri, token, positionMs);
+  } catch (err) {
+    pendingTrackUri = null;
+    throw err;
+  }
 }
 
 async function addTrack(track, selectedName, token) {
   const entry = cache[selectedName];
-  if (entry && entry.tracks.some(t => t.uri === track.uri)) return 0;
-  const res = await fetch(`https://api.spotify.com/v1/playlists/${PLAYLISTS[selectedName].id}/items`, {
+  if (entry && entry.tracks && entry.tracks.some(t => t.uri === track.uri)) return 0;
+  const res = await fetch("https://api.spotify.com/v1/playlists/" + PLAYLISTS[selectedName].id + "/items", {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
     body: JSON.stringify({ uris: [track.uri] })
   });
   if (!res.ok) throw new Error("ERROR add " + selectedName + " " + res.status);
-  if (entry) {
-    entry.tracks.push(track);
-    writeCache();
+  if (!cache[selectedName]) {
+    cache[selectedName] = {
+      id: PLAYLISTS[selectedName].id,
+      label: selectedName,
+      image: PLAYLISTS[selectedName].image || null,
+      loadedAt: Date.now(),
+      tracks: [],
+      partial: true
+    };
   }
+  if (!cache[selectedName].tracks) cache[selectedName].tracks = [];
+  cache[selectedName].tracks.push(track);
+  writeCache();
   return 1;
 }
 
@@ -472,21 +512,30 @@ async function selectSource(name) {
   if (grid) {
     for (const b of grid.children) b.classList.toggle("active", b.dataset.name === name);
   }
-  try {
-    const token = await getToken();
-    if (!cache[name] || !cache[name].tracks || !cache[name].tracks.length) {
-      setStatus("Loading " + name);
-      await loadPlaylist(name, token);
-      setStatus("Ready · Playlist Filter");
-    }
-    renderTracks();
+  const pickFirst = () => {
     const tracks = (cache[name] && cache[name].tracks) || [];
     const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
-    if (first && (!lastState || !lastState.track_window || !lastState.track_window.current_track)) {
+    if (first) {
       currentTrack = first;
       updatePlayerBar(first);
     }
+  };
+  const cached = cache[name];
+  if (cached && cached.tracks && cached.tracks.length && !cached.partial) {
+    renderTracks();
+    pickFirst();
     highlightTracks();
+    markGridHasTrack();
+  }
+  try {
+    const token = await getToken();
+    setStatus("Loading " + name);
+    await loadPlaylist(name, token);
+    setStatus("Ready · Playlist Filter");
+    renderTracks();
+    pickFirst();
+    highlightTracks();
+    markGridHasTrack();
   } catch (err) {
     setFeedback(err.message, true);
   }
@@ -508,9 +557,7 @@ function renderTracks() {
   const name = sourceName();
   const entry = cache[name];
   const tracks = entry && entry.tracks ? entry.tracks : [];
-  const playingUri = lastState && lastState.track_window && lastState.track_window.current_track
-    ? lastState.track_window.current_track.uri
-    : (currentTrack && currentTrack.uri);
+  const playingUri = currentPlayingUri();
   el.list.innerHTML = "";
   for (const track of tracks) {
     const hidden = isHidden(name, track.uri);
@@ -554,9 +601,7 @@ function renderTracks() {
 }
 
 function highlightTracks() {
-  const uri = lastState && lastState.track_window && lastState.track_window.current_track
-    ? lastState.track_window.current_track.uri
-    : (currentTrack && currentTrack.uri);
+  const uri = currentPlayingUri();
   const tracks = (cache[sourceName()] && cache[sourceName()].tracks) || [];
   for (let i = 0; i < tracks.length; i++) {
     if (el.list.children[i]) el.list.children[i].classList.toggle("current", Boolean(uri) && tracks[i].uri === uri);
@@ -578,9 +623,19 @@ function hideGrid(name, value) {
   localStorage.setItem(GRID_HIDE_KEY, JSON.stringify(list));
 }
 
+function markGridHasTrack() {
+  const cur = currentTrack && currentTrack.uri;
+  for (const btn of el.grid.children) {
+    const entry = cache[btn.dataset.name];
+    const has = cur && entry && entry.tracks && entry.tracks.some(t => t.uri === cur);
+    btn.classList.toggle("has-track", Boolean(has));
+  }
+}
+
 function renderGrid() {
   el.grid.innerHTML = "";
   const hidden = hiddenGrid();
+  const cur = currentTrack && currentTrack.uri;
   for (const name of Object.keys(PLAYLISTS)) {
     const entry = PLAYLISTS[name];
     if (entry.extra) continue;
@@ -589,14 +644,9 @@ function renderGrid() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.dataset.name = name;
-    if (isHidden) btn.style.opacity = ".45";
+    if (isHidden) btn.classList.add("hidden-tile");
     const img = document.createElement("img");
     img.alt = "";
-    img.style.width = "100%";
-    img.style.aspectRatio = "1";
-    img.style.objectFit = "cover";
-    img.style.display = "block";
-    img.style.borderRadius = "6px";
     bindImg(img, entry.image || (cache[name] && cache[name].image));
     const label = document.createElement("span");
     label.textContent = entry.label;
@@ -610,8 +660,26 @@ function renderGrid() {
       renderGrid();
     });
     btn.append(img, label, badge);
+    const has = cur && cache[name] && cache[name].tracks && cache[name].tracks.some(t => t.uri === cur);
+    if (has) btn.classList.add("has-track");
     btn.addEventListener("click", () => onAdd(name, btn));
     el.grid.appendChild(btn);
+  }
+}
+
+async function removeTrack(track, name, token) {
+  const id = PLAYLISTS[name] && PLAYLISTS[name].id;
+  if (!id) throw new Error("ERROR no playlist id");
+  const res = await fetch("https://api.spotify.com/v1/playlists/" + id + "/items", {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ items: [{ uri: track.uri }] })
+  });
+  if (!res.ok && res.status !== 200) throw new Error("ERROR remove " + name + " " + res.status);
+  const entry = cache[name];
+  if (entry && entry.tracks) {
+    entry.tracks = entry.tracks.filter(t => t.uri !== track.uri);
+    writeCache();
   }
 }
 
@@ -620,21 +688,22 @@ async function onAdd(name, btn) {
     setFeedback("ERROR no current track", true);
     return;
   }
-  btn.classList.remove("ok", "err");
+  const entry = cache[name];
+  const already = entry && entry.tracks && entry.tracks.some(t => t.uri === currentTrack.uri);
   btn.classList.add("pending");
-  const original = btn.textContent;
-  btn.textContent = "…";
   try {
-    const added = await addTrack(currentTrack, name, await getToken());
-    btn.classList.remove("pending");
-    btn.classList.add("ok");
-    btn.textContent = original;
-    setFeedback("added to " + added + " playlists", false);
-    setTimeout(() => btn.classList.remove("ok"), 1200);
+    const token = await getToken();
+    if (already) {
+      await removeTrack(currentTrack, name, token);
+      setFeedback("removed from " + name, false);
+    } else {
+      const added = await addTrack(currentTrack, name, token);
+      setFeedback(added ? "added to " + name : "already in " + name, false);
+    }
+    renderGrid();
   } catch (err) {
     btn.classList.remove("pending");
     btn.classList.add("err");
-    btn.textContent = original;
     setFeedback(err.message, true);
   }
 }
@@ -652,11 +721,19 @@ function onPlayerState(state) {
   lastState = state;
   if (!state) return;
   const sdkTrack = state.track_window.current_track;
+  if (pendingTrackUri) {
+    if (sdkTrack && sdkTrack.uri === pendingTrackUri) {
+      pendingTrackUri = null;
+    } else {
+      return;
+    }
+  }
   const prevUri = prev && prev.track_window && prev.track_window.current_track
     ? prev.track_window.current_track.uri
     : null;
   if (sdkTrack && sdkTrack.uri !== prevUri) {
     document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.add("active"));
+    markGridHasTrack();
   }
   if (sdkTrack) {
     const fromCache = findCachedTrack(sdkTrack.uri);
@@ -755,7 +832,8 @@ async function startSession(token) {
       setStatus("Loading " + name);
       await loadPlaylist(name, token);
     }
-    if (!lastState || !lastState.track_window || !lastState.track_window.current_track) {
+
+        if (!lastState || !lastState.track_window || !lastState.track_window.current_track) {
       const tracks = (cache[name] && cache[name].tracks) || [];
       const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
       if (first) {
@@ -765,6 +843,7 @@ async function startSession(token) {
     }
     renderTracks();
     highlightTracks();
+    markGridHasTrack();
   } catch (err) {
     setFeedback(err.message, true);
   }
@@ -1011,6 +1090,8 @@ async function playAdjacent(dir, hide) {
       updatePlayerBar(original);
       setFeedback(err.message, true);
       renderTracks();
+      highlightTracks();
+      markGridHasTrack();
       return;
     }
   }
@@ -1064,15 +1145,15 @@ function buildPlayer() {
     try {
       await player.activateElement();
       const token = await getToken();
-      if (lastState && !lastState.paused) {
+      const sdkTrack = lastState && lastState.track_window && lastState.track_window.current_track;
+      if (lastState && !lastState.paused && sdkTrack && (!currentTrack || sdkTrack.uri === currentTrack.uri)) {
         await fetch("https://api.spotify.com/v1/me/player/pause", {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}` }
         });
         return;
       }
-      const sdkTrack = lastState && lastState.track_window && lastState.track_window.current_track;
-      if (!sdkTrack && currentTrack) {
+      if (currentTrack && (!sdkTrack || sdkTrack.uri !== currentTrack.uri)) {
         await playFromGesture(currentTrack, token);
         updatePlayerBar(currentTrack);
         highlightTracks();
@@ -1211,9 +1292,47 @@ async function unhideAll() {
   }
 }
 
+function buildHeader() {
+  if (document.getElementById("app-header")) return;
+  const header = document.createElement("header");
+  header.id = "app-header";
+  const logo = document.createElement("i");
+  logo.className = "fa-brands fa-spotify";
+  const wrap = document.createElement("div");
+  wrap.className = "header-text";
+  const h1 = document.createElement("h1");
+  h1.textContent = "Playlist Filter";
+  wrap.append(h1, el.status);
+  header.append(logo, wrap);
+  el.main.insertBefore(header, el.main.firstChild);
+  document.querySelectorAll("h1, h2, h3, header").forEach(node => {
+    if (node.closest("#app-header")) return;
+    if (node.textContent.trim().startsWith("Playlist Filter")) node.style.display = "none";
+  });
+}
+
+async function reloadGridPlaylists() {
+  const token = await getToken();
+  const hidden = hiddenGrid();
+  const names = Object.keys(PLAYLISTS).filter(n => !PLAYLISTS[n].extra && !hidden.includes(n));
+  for (let i = 0; i < names.length; i++) {
+    setStatus("Reloading " + (i + 1) + "/" + names.length + ": " + names[i]);
+    try {
+      await loadPlaylist(names[i], token);
+    } catch (err) {
+      setFeedback(err.message, true);
+    }
+  }
+  setStatus("Ready · Playlist Filter");
+  renderGrid();
+  renderTracks();
+  highlightTracks();
+}
+
 async function boot() {
   renderGrid();
   buildPlayer();
+  buildHeader();
   el.redirect.textContent = redirectUri();
   el.clientId.value = getClientId();
   if (!document.getElementById("fa-css")) {
@@ -1309,7 +1428,11 @@ async function boot() {
   applyGridScale(localStorage.getItem(gKey) || 1);
 
   songsRow.append(songsToggle, unhideBtn, skipToggle, playerZoom, gridZoom);
-  el.list.parentElement.insertBefore(songsRow, el.list);
+  const songsPanel = document.createElement("div");
+  songsPanel.className = "songs-panel";
+  el.list.parentElement.insertBefore(songsPanel, el.list);
+  songsPanel.appendChild(songsRow);
+  songsPanel.appendChild(el.list);
 
   const toolbar = document.createElement("div");
   toolbar.className = "ui-toolbar";
@@ -1369,6 +1492,21 @@ async function boot() {
     renderGrid();
   });
 
+  const reloadBtn = document.createElement("button");
+  reloadBtn.type = "button";
+  reloadBtn.innerHTML = '<i class="fa-solid fa-rotate"></i><span>Reload grid</span>';
+  reloadBtn.addEventListener("click", async () => {
+    reloadBtn.disabled = true;
+    try {
+      await reloadGridPlaylists();
+    } catch (err) {
+      setFeedback(err.message, true);
+    } finally {
+      reloadBtn.disabled = false;
+    }
+  });
+  toolbar.appendChild(reloadBtn);
+
   const bar = el.progress.parentElement || el.progress;
   bar.style.cursor = "pointer";
   bar.addEventListener("click", async e => {
@@ -1379,8 +1517,22 @@ async function boot() {
     const duration = currentTrack.durationMs || (lastState && lastState.duration) || 1;
     await player.seek(Math.floor(fraction * duration));
   });
-  try {
+    try {
     readCache();
+    document.addEventListener("visibilitychange", async () => {
+      if (document.visibilityState !== "visible") return;
+      const name = sourceName();
+      try {
+        const token = await getToken();
+        await loadPlaylist(name, token);
+        renderTracks();
+        renderGrid();
+        highlightTracks();
+        markGridHasTrack();
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
+    });
     let token = null;
     try {
       token = await handleCallback();

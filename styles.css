@@ -10,7 +10,7 @@
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 14px;
-  --shadow: 0 8px 28px rgba(0, 0, 0, .45);
+
   --fast: .12s ease;
 }
 
@@ -38,7 +38,7 @@ button {
   border-radius: var(--r-sm);
   padding: 8px 14px;
   cursor: pointer;
-  transition: background var(--fast), border-color var(--fast), transform var(--fast), box-shadow var(--fast);
+  transition: background var(--fast), border-color var(--fast), transform var(--fast);
 }
 
 button:hover {
@@ -78,7 +78,6 @@ select:focus, input:focus, textarea:focus {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: 24px;
-  box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -128,29 +127,24 @@ select:focus, input:focus, textarea:focus {
   font-weight: 700;
   font-size: 13px;
   letter-spacing: .02em;
-  box-shadow: 0 4px 16px rgba(29, 185, 84, .35);
 }
 
 .songs-toggle:hover {
   background: #24d461;
-  box-shadow: 0 6px 22px rgba(29, 185, 84, .5);
 }
 
 .songs-toggle.active {
   background: transparent;
   color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .songs-toggle.action {
   background: var(--action);
   color: #ffffff;
-  box-shadow: 0 4px 16px rgba(77, 107, 254, .35);
 }
 
 .songs-toggle.action:hover {
   background: #6180ff;
-  box-shadow: 0 6px 22px rgba(77, 107, 254, .5);
 }
 
 .zoom-group {
@@ -208,7 +202,6 @@ select:focus, input:focus, textarea:focus {
   height: 340px;
   object-fit: cover;
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow);
   display: block;
 }
 
@@ -260,12 +253,10 @@ select:focus, input:focus, textarea:focus {
 #player-view .np-toggle {
   background: var(--accent);
   color: #06120a;
-  box-shadow: 0 4px 16px rgba(29, 185, 84, .35);
 }
 
 #player-view .np-toggle:hover {
   background: #24d461;
-  box-shadow: 0 6px 22px rgba(29, 185, 84, .5);
 }
 
 #player-view .np-seeks button {
@@ -284,7 +275,6 @@ select:focus, input:focus, textarea:focus {
 #player-view .np-nav {
   background: var(--action);
   color: #ffffff;
-  box-shadow: 0 4px 16px rgba(77, 107, 254, .35);
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -299,7 +289,6 @@ select:focus, input:focus, textarea:focus {
 #player-view .np-nav:hover {
   background: #6180ff;
   transform: translateY(-50%);
-  box-shadow: 0 6px 22px rgba(77, 107, 254, .5);
 }
 
 #player-view .np-nav-prev { left: 0; }
@@ -550,13 +539,12 @@ input[type="range"]::-moz-range-thumb {
   border-radius: var(--r-sm);
   font-size: 14px;
   font-weight: 800;
-  transition: background var(--fast), color var(--fast), box-shadow var(--fast);
+  transition: background var(--fast), color var(--fast);
 }
 #player-view .np-shuffle.active {
   background: #8b5cf6;
   color: #ffffff;
   border: none;
-  box-shadow: 0 4px 16px rgba(139, 92, 246, .45);
 }
 #source-grid {
   display: grid;
@@ -581,7 +569,6 @@ input[type="range"]::-moz-range-thumb {
 }
 .source-tile.active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
 }
 .source-tile img {
   width: 100%;
@@ -647,7 +634,7 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 600;
   letter-spacing: .02em;
   cursor: pointer;
-  transition: background var(--fast), color var(--fast), border-color var(--fast), box-shadow var(--fast);
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
 }
 .skip-toggle:hover {
   background: var(--surface-2);
@@ -657,9 +644,78 @@ input[type="range"]::-moz-range-thumb {
   background: var(--action);
   color: #ffffff;
   border-color: transparent;
-  box-shadow: 0 4px 16px rgba(77, 107, 254, .35);
 }
 .skip-toggle.on:hover {
   background: #6180ff;
-  box-shadow: 0 6px 22px rgba(77, 107, 254, .5);
+}
+
+#target-grid button.has-track {
+  background: var(--accent);
+  border-color: transparent;
+}
+#target-grid button.has-track span {
+  color: #06120a;
+  font-weight: 700;
+}
+#target-grid button.has-track .grid-minus {
+  background: rgba(6, 18, 10, .7);
+  color: #ffffff;
+}
+
+#app-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 24px;
+  background: var(--accent);
+  color: #06120a;
+  width: calc(100% + 48px);
+  margin: -24px -24px 20px -24px;
+  box-sizing: border-box;
+}
+
+#app-header .fa-spotify {
+  font-size: 34px;
+  color: #06120a;
+}
+
+#app-header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  line-height: 1.1;
+}
+
+#app-header #status-line {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: rgba(6, 18, 10, .75);
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+@media (max-width: 720px) {
+  #app-header {
+    padding: 12px 18px;
+    gap: 10px;
+    width: calc(100% + 28px);
+    margin: -14px -14px 16px -14px;
+  }
+  #app-header .fa-spotify { font-size: 26px; }
+  #app-header h1 { font-size: 17px; }
+}
+
+.songs-panel {
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-top: 8px;
+}
+.songs-panel .songs-row {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+  padding: 4px 0 8px;
 }
