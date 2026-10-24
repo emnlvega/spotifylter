@@ -360,6 +360,35 @@ function writeCache() {
   localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
 }
 
+async function spFetch(url, token, attempt = 1) {
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: { Authorization: "Bearer " + token }
+  });
+  if (res.status === 429) {
+    let body = null;
+    try {
+      body = await res.clone().json();
+    } catch (_) { /* not json */ }
+    if (body && body.error && body.error.reason === "QUOTA_EXCEEDED") {
+      setStatus("ERROR quota exceeded — stop and wait");
+      return res;
+    }
+    if (attempt > 4) return res;
+    const retryAfter = Number(res.headers.get("Retry-After"));
+    const wait = Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter * 1000
+      : 1000 * Math.pow(2, attempt - 1);
+    await new Promise(r => setTimeout(r, wait));
+    return spFetch(url, token, attempt + 1);
+  }
+  if (res.status >= 500 && attempt <= 4) {
+    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+    return spFetch(url, token, attempt + 1);
+  }
+  return res;
+}
+
 async function loadPlaylist(name, token) {
   const raw = String(PLAYLISTS[name].id || "").trim();
   const match = raw.match(/([0-9A-Za-z]{22})(?:[?/]|$)/);
@@ -877,7 +906,26 @@ function renderGrid() {
       hideGrid(name, !isHidden);
       renderGrid();
     });
-    btn.append(img, label, badge);
+    const sync = document.createElement("span");
+    sync.className = "grid-sync";
+    sync.setAttribute("role", "button");
+    sync.innerHTML = '<i class="fa-solid fa-rotate"></i>';
+    sync.title = "Sync this playlist";
+    sync.addEventListener("click", async ev => {
+      ev.stopPropagation();
+      if (sync.classList.contains("busy")) return;
+      sync.classList.add("busy");
+      try {
+        await loadPlaylist(name, await getToken());
+        renderGrid();
+        setFeedback("synced " + name, false);
+      } catch (err) {
+        setFeedback(err.message, true);
+      } finally {
+        sync.classList.remove("busy");
+      }
+    });
+    btn.append(img, label, badge, sync);
     const has = cur && cache[name] && cache[name].tracks && cache[name].tracks.some(t => sameRecording(t, currentTrack));
     if (has) btn.classList.add("has-track");
     btn.addEventListener("click", () => onAdd(name, btn));
@@ -1722,7 +1770,7 @@ function buildTargetBar() {
     paint();
     renderGrid();
   });
-  bar.append(label, hiddenBtn);
+  bar.append(label, el.status, hiddenBtn);
   el.grid.parentElement.insertBefore(bar, el.grid);
   return paint;
 }
@@ -1738,7 +1786,7 @@ function buildHeader() {
   wrap.className = "header-text";
   const h1 = document.createElement("h1");
   h1.textContent = "spotifylter";
-  wrap.append(h1, el.status);
+  wrap.append(h1);
   header.append(logo, wrap);
   const out = document.createElement("button");
   out.type = "button";
@@ -1752,6 +1800,7 @@ function buildHeader() {
     if (node.textContent.trim().startsWith("spotifylter")) node.style.display = "none";
   });
 }
+
 
 async function reloadGridPlaylists() {
   const token = await getToken();
@@ -2335,7 +2384,7 @@ async function boot() {
 
   const unhideBtn = document.createElement("button");
   unhideBtn.type = "button";
-  unhideBtn.className = "songs-toggle action";
+  unhideBtn.className = "outline-btn";
   const unhideLabel = document.createElement("span");
   unhideLabel.textContent = "Unhide all";
   unhideBtn.append(unhideLabel);
@@ -2343,7 +2392,7 @@ async function boot() {
 
   const skipToggle = document.createElement("button");
   skipToggle.type = "button";
-  skipToggle.className = "skip-toggle";
+  skipToggle.className = "outline-btn";
   skipToggle.innerHTML = '<i class="fa-solid fa-eye-slash"></i><span>Skip hides</span>';
   const paintSkip = () => skipToggle.classList.toggle("on", hideOnSkip);
   paintSkip();
@@ -2485,7 +2534,7 @@ async function boot() {
   paintTargetBar();
   for (const node of document.querySelectorAll("label, h2, h3, h4, p")) {
     if (node.closest("#app-header")) continue;
-    if (node.textContent.trim() === "Source") node.style.display = "none";
+    if (node.textContent.trim() === "Source" || node.textContent.trim() === "Add current track") node.style.display = "none";
   }
 
   const bar = el.progress.parentElement || el.progress;

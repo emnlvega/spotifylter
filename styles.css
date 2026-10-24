@@ -6,7 +6,8 @@
   --text: #e8ecf2;
   --muted: #8b94a3;
   --accent: #1db954;
-  --action: #4d6bfe;
+  --action: #1a9143;
+  --darkG: #166632;
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 14px;
@@ -150,7 +151,7 @@ select:focus, input:focus, textarea:focus {
 }
 
 .songs-toggle.action:hover {
-  background: #6180ff;
+  background: #166632;
 }
 
 .zoom-group {
@@ -278,9 +279,11 @@ select:focus, input:focus, textarea:focus {
   color: #ffffff;
 }
 
-#player-view .np-nav {
-  background: var(--action);
-  color: #ffffff;
+#player-view .np-controls .np-nav {
+  background: var(--bg);
+  color: var(--text);
+  border: 3px solid var(--accent);
+  box-shadow: none;
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -290,10 +293,13 @@ select:focus, input:focus, textarea:focus {
   align-items: center;
   justify-content: center;
   font-size: 18px;
+  transition: color var(--fast), background var(--fast), border-color var(--fast);
 }
 
-#player-view .np-nav:hover {
-  background: #6180ff;
+#player-view .np-controls .np-nav:hover {
+  background: var(--bg);
+  color: var(--accent);
+  border-color: var(--accent);
   transform: translateY(-50%);
 }
 
@@ -652,7 +658,7 @@ input[type="range"]::-moz-range-thumb {
   border-color: transparent;
 }
 .skip-toggle.on:hover {
-  background: #6180ff;
+  background: #166632;
 }
 
 #target-grid button.has-track {
@@ -1207,4 +1213,61 @@ body.auth-mode #auth-box {
 }
 .tool-tile.cascade-on i {
   color: #06120a;
+}
+
+.target-bar #status-line {
+  margin: 0 0 0 4px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+
+#target-grid .grid-sync {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(10, 13, 18, .8);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--fast);
+}
+#target-grid .grid-sync:hover {
+  color: var(--action);
+}
+#target-grid .grid-sync.busy i {
+  animation: grid-sync-spin .7s linear infinite;
+}
+@keyframes grid-sync-spin {
+  to { transform: rotate(360deg); }
+}
+
+.outline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  cursor: pointer;
+  transition: color var(--fast), background var(--fast), border-color var(--fast);
+}
+.outline-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.outline-btn.on {
+  color: var(--accent);
 }
