@@ -842,11 +842,23 @@ async function selectSource(name, play) {
     }
   };
   const cached = cache[name];
-  if (cached && cached.tracks && cached.tracks.length && !cached.partial) {
+  if (cached && cached.tracks && cached.tracks.length && !cached.partial && Date.now() - cached.loadedAt < 30000) {
     renderTracks();
     pickFirst();
     highlightTracks();
     markGridHasTrack();
+    if (play && currentTrack) {
+      try {
+        const token = await getToken();
+        await playFromGesture(currentTrack, token);
+        updatePlayerBar(currentTrack);
+        highlightTracks();
+        markGridHasTrack();
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
+    }
+    return;
   }
   try {
     const token = await getToken();
