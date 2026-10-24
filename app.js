@@ -1,6 +1,7 @@
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
 const SYNC_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hidden";
+const HIERARCHY_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hierarchy";
 const SCOPES = [
   "streaming",
   "user-read-email",
@@ -22,7 +23,8 @@ const TOOLS = [
   { id: "combine",   icon: "fa-circle-plus",  label: "Combine",   desc: "Union, no duplicates" },
   { id: "subtract",  icon: "fa-circle-minus", label: "Subtract",  desc: "Origin minus selected" },
   { id: "intersect", icon: "fa-circle-nodes", label: "Intersect", desc: "Only songs in all selected" },
-  { id: "dedupe",    icon: "fa-clone",        label: "Dedupe",    desc: "Copy without duplicates" }
+  { id: "dedupe",    icon: "fa-clone",        label: "Dedupe",    desc: "Copy without duplicates" },
+  { id: "hierarchy", icon: "fa-sitemap", label: "Hierarchy", desc: "Auto-add to linked playlists" }
 ];
 
 const PLAYLISTS = {
@@ -792,13 +794,79 @@ async function removeTrack(track, name, token) {
   }
 }
 
+function hierarchyMap() {
+  const raw = localStorage.getItem(HIERARCHY_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch (_) { return {}; }
+}
 
+async function syncHierarchyPull(token) {
+  const res = await fetch(HIERARCHY_URL + "?accessToken=" + encodeURIComponent(token));
+  if (!res.ok) throw new Error("ERROR hierarchy pull " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error("ERROR hierarchy pull " + data.error);
+  if (!data.data) return;
+  let parsed;
+  try { parsed = JSON.parse(data.data); } catch (_) { return; }
+  if (parsed.map && typeof parsed.map === "object") {
+    localStorage.setItem(HIERARCHY_KEY, JSON.stringify(parsed.map));
+  }
+  if (typeof parsed.on === "boolean") {
+    localStorage.setItem(HIERARCHY_ON_KEY, parsed.on ? "1" : "0");
+  }
+}
+
+async function syncHierarchyPush(token) {
+  const payload = JSON.stringify({ map: hierarchyMap(), on: hierarchyOn() });
+  const res = await fetch(HIERARCHY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accessToken: token, data: payload })
+  });
+  if (!res.ok) throw new Error("ERROR hierarchy push " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error("ERROR hierarchy push " + data.error);
+}
+
+function setHierarchyMap(map) {
+  localStorage.setItem(HIERARCHY_KEY, JSON.stringify(map));
+  getToken()
+    .then(token => syncHierarchyPush(token))
+    .catch(err => setFeedback(err.message, true));
+}
+
+function hierarchyOn() {
+  return localStorage.getItem(HIERARCHY_ON_KEY) === "1";
+}
+
+function setHierarchyOn(v) {
+  localStorage.setItem(HIERARCHY_ON_KEY, v ? "1" : "0");
+  getToken()
+    .then(token => syncHierarchyPush(token))
+    .catch(err => setFeedback(err.message, true));
+}
+
+function resolveHierarchy(name) {
+  const map = hierarchyMap();
+  const out = new Set();
+  const stack = [name];
+  while (stack.length) {
+    const node = stack.pop();
+    for (const next of (map[node] || [])) {
+      if (next === name || out.has(next)) continue;
+      out.add(next);
+      stack.push(next);
+    }
+  }
+  return [...out];
+}
 
 async function onAdd(name, btn) {
   if (!currentTrack) {
     setFeedback("ERROR no current track", true);
     return;
   }
+  const targets = hierarchyOn() ? [name, ...resolveHierarchy(name)] : [name];
   const entry = cache[name];
   const already = entry && entry.tracks && entry.tracks.some(t => t.uri === currentTrack.uri);
   btn.classList.add("pending");
@@ -811,14 +879,26 @@ async function onAdd(name, btn) {
       renderTracks();
       highlightTracks();
     } else {
-      const added = await addTrack(currentTrack, name, token);
-      setFeedback(added ? "added to " + name : "already in " + name, false);
-      if (added) {
+      let totalAdded = 0;
+      const errors = [];
+      for (const target of targets) {
+        try {
+          totalAdded += await addTrack(currentTrack, target, token);
+        } catch (err) {
+          errors.push(target + ": " + err.message);
+        }
+      }
+      if (errors.length) {
+        setFeedback("partial " + errors.join(" · "), true);
+      } else if (targets.length === 1) {
+        setFeedback(totalAdded ? "added to " + name : "already in " + name, false);
+      } else {
+        setFeedback("added to " + totalAdded + " of " + targets.length + " playlists", false);
+      }
+      if (totalAdded) {
         try {
           await saveToLibrary(currentTrack, token);
-        } catch (err) {
-          setFeedback("added, library " + err.message, true);
-        }
+        } catch (_) { /* library is best-effort */ }
       }
       btn.classList.add("ok");
       setTimeout(() => btn.classList.remove("ok"), 1200);
@@ -957,6 +1037,11 @@ async function startSession(token) {
   writeCache();
   try {
     await syncPull(token);
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+  try {
+    await syncHierarchyPull(token);
   } catch (err) {
     setFeedback(err.message, true);
   }
@@ -1503,6 +1588,10 @@ function renderToolsGrid() {
           await openManualPlaylist(token);
           return;
         }
+        if (t.id === "hierarchy") {
+          openHierarchyPanel();
+          return;
+        }
         await openTool(t.id, token);
       } catch (err) {
         setFeedback(err.message, true);
@@ -1551,6 +1640,117 @@ async function ensureLoaded(names, token) {
     setStatus("Loading " + name);
     await loadPlaylist(name, token);
   }
+}
+
+function openHierarchyPanel() {
+  const old = document.getElementById("tool-panel");
+  if (old) old.remove();
+
+  const panel = document.createElement("div");
+  panel.id = "tool-panel";
+  panel.className = "tool-panel";
+
+  const head = document.createElement("div");
+  head.className = "tool-head";
+  const h3 = document.createElement("h3");
+  h3.textContent = "Hierarchy";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "tool-close";
+  close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  close.addEventListener("click", () => panel.remove());
+  head.append(h3, close);
+  panel.appendChild(head);
+
+  const hint = document.createElement("p");
+  hint.className = "tool-hint";
+  hint.textContent = "When you add a song to a playlist, also add it to the linked ones below. Cascades downstream. Only runs while the toggle is ON. Removing a song only removes it from the playlist you clicked.";
+  panel.appendChild(hint);
+
+  const toggleRow = document.createElement("div");
+  toggleRow.className = "hierarchy-toggle-row";
+  const toggleLabel = document.createElement("span");
+  toggleLabel.textContent = "Cascade";
+  const toggleBtn = document.createElement("button");
+  toggleBtn.type = "button";
+  toggleBtn.className = "skip-toggle";
+  const paintToggle = () => {
+    toggleBtn.classList.toggle("on", hierarchyOn());
+    toggleBtn.innerHTML = hierarchyOn()
+      ? '<i class="fa-solid fa-toggle-on"></i><span>ON</span>'
+      : '<i class="fa-solid fa-toggle-off"></i><span>OFF</span>';
+  };
+  paintToggle();
+  toggleBtn.addEventListener("click", () => {
+    setHierarchyOn(!hierarchyOn());
+    paintToggle();
+    paintToolsBadge();
+  });
+  toggleRow.append(toggleLabel, toggleBtn);
+  panel.appendChild(toggleRow);
+
+  const list = document.createElement("div");
+  list.className = "hierarchy-list";
+  panel.appendChild(list);
+
+  const names = Object.keys(PLAYLISTS).filter(n => !PLAYLISTS[n].extra);
+
+  for (const name of names) {
+    const row = document.createElement("div");
+    row.className = "hierarchy-row";
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "hierarchy-header";
+    const title = document.createElement("span");
+    title.textContent = name;
+    const summary = document.createElement("span");
+    summary.className = "hierarchy-summary";
+    const dests = (hierarchyMap()[name] || []);
+    summary.textContent = dests.length ? "→ " + dests.join(", ") : "→ none";
+    const chevron = document.createElement("i");
+    chevron.className = "fa-solid fa-chevron-down hierarchy-chevron";
+    header.append(title, summary, chevron);
+    row.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "hierarchy-body";
+    body.style.display = "none";
+
+    for (const other of names) {
+      if (other === name) continue;
+      const label = document.createElement("label");
+      label.className = "hierarchy-option";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = dests.includes(other);
+      cb.addEventListener("change", () => {
+        const m = hierarchyMap();
+        const cur = (m[name] || []).slice();
+        const idx = cur.indexOf(other);
+        if (cb.checked && idx === -1) cur.push(other);
+        if (!cb.checked && idx !== -1) cur.splice(idx, 1);
+        if (cur.length) m[name] = cur; else delete m[name];
+        setHierarchyMap(m);
+        summary.textContent = cur.length ? "→ " + cur.join(", ") : "→ none";
+      });
+      const span = document.createElement("span");
+      span.textContent = other;
+      label.append(cb, span);
+      body.appendChild(label);
+    }
+
+    header.addEventListener("click", () => {
+      const open = body.style.display !== "none";
+      body.style.display = open ? "none" : "grid";
+      chevron.style.transform = open ? "rotate(0deg)" : "rotate(180deg)";
+    });
+
+    row.appendChild(body);
+    list.appendChild(row);
+  }
+
+  document.getElementById("tool-panel-host").appendChild(panel);
 }
 
 async function openTool(toolId, token) {
@@ -1747,6 +1947,20 @@ async function openTool(toolId, token) {
   document.getElementById("tool-panel-host").appendChild(panel);
 }
 
+function paintToolsBadge() {
+  const btn = document.querySelector('[data-tool="tools"]');
+  if (!btn) return;
+  const existing = btn.querySelector(".hierarchy-dot");
+  if (hierarchyOn() && !existing) {
+    const dot = document.createElement("span");
+    dot.className = "hierarchy-dot";
+    dot.title = "Hierarchy cascade is ON";
+    btn.appendChild(dot);
+  } else if (!hierarchyOn() && existing) {
+    existing.remove();
+  }
+}
+
 async function boot() {
   renderGrid();
   buildPlayer();
@@ -1885,6 +2099,7 @@ async function boot() {
   const toolsBtn = document.createElement("button");
   toolsBtn.type = "button";
   toolsBtn.innerHTML = '<i class="fa-solid fa-toolbox"></i><span>Tools</span>';
+  toolsBtn.dataset.tool = "tools";
   const paintTools = () => toolsBtn.classList.toggle("active", !toolsCollapsed);
   paintTools();
   toolsBtn.addEventListener("click", () => {
@@ -1895,6 +2110,7 @@ async function boot() {
   });
   toolbar.appendChild(toolsBtn);
   renderToolsGrid();
+  paintToolsBadge();
 
   const hiddenBtn = document.createElement("button");
   hiddenBtn.type = "button";
