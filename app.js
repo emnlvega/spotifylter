@@ -17,6 +17,10 @@ const SCOPES = [
 
 const HIERARCHY_KEY = "sp_hierarchy";
 const HIERARCHY_ON_KEY = "sp_hierarchy_on";
+const ME_KEY = "sp_me_v1";
+const ME_TTL = 60 * 60 * 1000;
+const PLAYLISTS_CACHE_KEY = "sp_playlists_v1";
+const PLAYLISTS_TTL = 60 * 60 * 1000;
 
 const TOOLS = [
   { id: "manual",    icon: "fa-paste",        label: "Manual",    desc: "Paste track links" },
@@ -269,6 +273,65 @@ async function getToken() {
   const data = await res.json();
   saveToken(data.access_token, data.refresh_token || t.refresh, data.expires_in);
   return data.access_token;
+}
+
+function readMeCache() {
+  const raw = localStorage.getItem(ME_KEY);
+  if (!raw) return null;
+  try {
+    const c = JSON.parse(raw);
+    if (!c || Date.now() > c.expiresAt) return null;
+    return c;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeMeCache(me) {
+  localStorage.setItem(ME_KEY, JSON.stringify({
+    id: me.id,
+    display_name: me.display_name,
+    expiresAt: Date.now() + ME_TTL
+  }));
+}
+
+function readPlaylistsCache() {
+  const raw = localStorage.getItem(PLAYLISTS_CACHE_KEY);
+  if (!raw) return null;
+  try {
+    const c = JSON.parse(raw);
+    if (!c || Date.now() > c.expiresAt || !Array.isArray(c.items)) return null;
+    return c.items;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writePlaylistsCache(items) {
+  localStorage.setItem(PLAYLISTS_CACHE_KEY, JSON.stringify({
+    items,
+    expiresAt: Date.now() + PLAYLISTS_TTL
+  }));
+}
+
+function clearPlaylistsCache() {
+  localStorage.removeItem(PLAYLISTS_CACHE_KEY);
+}
+
+async function ensureIdentity(token) {
+  const cached = readMeCache();
+  if (cached) return cached;
+  const me = await validateToken(token);
+  writeMeCache(me);
+  return me;
+}
+
+async function ensurePlaylists(token) {
+  const cached = readPlaylistsCache();
+  if (cached) return cached;
+  const found = await discoverPlaylists(token);
+  writePlaylistsCache(found);
+  return found;
 }
 
 async function validateToken(token) {
@@ -1020,7 +1083,7 @@ function showAuth(message) {
 }
 
 async function startSession(token) {
-  const me = await validateToken(token);
+  const me = await ensureIdentity(token);
   showApp();
   setStatus("Connecting player…");
   if (!player) await initPlayer(onPlayerState);
@@ -1028,7 +1091,7 @@ async function startSession(token) {
   setStatus("Discovering playlists…");
   for (const key of Object.keys(PLAYLISTS)) delete PLAYLISTS[key];
   SOURCE_CANDIDATES.length = 0;
-  const found = await discoverPlaylists(token);
+    const found = await ensurePlaylists(token);
   for (const p of found) {
     PLAYLISTS[p.label] = { id: p.id, label: p.label, image: p.image };
     if (cache[p.label]) cache[p.label].id = p.id;
@@ -1929,12 +1992,27 @@ async function openTool(toolId, token) {
       const pl = await createPlaylistWithTracks(name, uris, token);
       PLAYLISTS[name] = { id: pl.id, label: name, image: null };
       SOURCE_CANDIDATES.push(name);
-      cache[name] = { id: pl.id, label: name, image: null, loadedAt: Date.now(), tracks: [], partial: true };
+      const trackMap = new Map();
+      for (const u of uris) {
+        if (trackMap.has(u)) continue;
+        const t = findCachedTrack(u);
+        if (t) trackMap.set(u, t);
+      }
+      const built = [...trackMap.values()];
+      cache[name] = {
+        id: pl.id,
+        label: name,
+        image: built.length && built[0].image ? built[0].image : null,
+        loadedAt: Date.now(),
+        tracks: built,
+        partial: false
+      };
       writeCache();
+      clearPlaylistsCache();
       renderSourceGrid();
       renderGrid();
       panel.remove();
-      setFeedback("created " + name + " · " + uris.length + " songs", false);
+      setFeedback("created " + name + " · " + built.length + " songs", false);
       setStatus("Ready · Playlist Filter");
     } catch (err) {
       create.disabled = false;
