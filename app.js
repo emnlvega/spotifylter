@@ -7,11 +7,23 @@ const SCOPES = [
   "user-read-private",
   "user-read-playback-state",
   "user-modify-playback-state",
+  "user-library-modify",
   "playlist-read-private",
   "playlist-read-collaborative",
   "playlist-modify-public",
   "playlist-modify-private"
 ].join(" ");
+
+const HIERARCHY_KEY = "sp_hierarchy";
+const HIERARCHY_ON_KEY = "sp_hierarchy_on";
+
+const TOOLS = [
+  { id: "manual",    icon: "fa-paste",        label: "Manual",    desc: "Paste track links" },
+  { id: "combine",   icon: "fa-circle-plus",  label: "Combine",   desc: "Union, no duplicates" },
+  { id: "subtract",  icon: "fa-circle-minus", label: "Subtract",  desc: "Origin minus selected" },
+  { id: "intersect", icon: "fa-circle-nodes", label: "Intersect", desc: "Only songs in all selected" },
+  { id: "dedupe",    icon: "fa-clone",        label: "Dedupe",    desc: "Copy without duplicates" }
+];
 
 const PLAYLISTS = {
   dscvry:               { id: "ERROR", label: "dscvry" },
@@ -68,6 +80,10 @@ let shuffleOn = localStorage.getItem("sp_shuffle") === "1";
 let shuffleQueue = [];
 let hideOnSkip = localStorage.getItem("sp_hide_on_skip") !== "0";
 let pendingTrackUri = null;
+let pendingTrackUriAt = 0;
+let sdkStaleUri = null;
+let sourcesCollapsed = localStorage.getItem("sp_sources_collapsed") === "1";
+let toolsCollapsed = localStorage.getItem("sp_tools_collapsed") !== "0";
 
 function currentPlayingUri() {
   if (pendingTrackUri) return pendingTrackUri;
@@ -368,11 +384,16 @@ function initPlayer(onState) {
         getOAuthToken: async cb => cb(await getToken()),
         volume: 0.8
       });
-      player.addListener("ready", ({ device_id }) => {
+            player.addListener("ready", ({ device_id }) => {
         deviceId = device_id;
         resolve(device_id);
       });
-      player.addListener("not_ready", ({ device_id }) => reject(new Error("ERROR device " + device_id)));
+      player.addListener("not_ready", ({ device_id }) => {
+        setStatus("Player disconnected — reconnecting");
+        setTimeout(() => {
+          try { player.connect(); } catch (_) { /* ignore */ }
+        }, 1500);
+      });
       player.addListener("player_state_changed", onState);
       player.addListener("initialization_error", e => reject(new Error("ERROR init " + e.message)));
       player.addListener("authentication_error", e => reject(new Error("ERROR auth " + e.message)));
@@ -392,20 +413,7 @@ function initPlayer(onState) {
 }
 
 async function playTrack(trackUri, token, positionMs, attempt = 1) {
-  const transfer = await fetch("https://api.spotify.com/v1/me/player", {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ device_ids: [deviceId], play: false })
-  });
-  if (!transfer.ok && transfer.status !== 204) {
-    if (attempt < 3 && (transfer.status >= 500 || transfer.status === 429)) {
-      await new Promise(r => setTimeout(r, 500 * attempt));
-      return playTrack(trackUri, token, positionMs, attempt + 1);
-    }
-    throw new Error("ERROR transfer " + transfer.status);
-  }
-  const body = { uris: [trackUri] };
-  if (typeof positionMs === "number") body.position_ms = positionMs;
+  const body = { uris: [trackUri], position_ms: typeof positionMs === "number" ? Math.floor(positionMs) : 0 };
   const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -421,7 +429,13 @@ async function playTrack(trackUri, token, positionMs, attempt = 1) {
 }
 
 function previewPosition(durationMs, part) {
-  const positions = { A: durationMs / 6, B: durationMs / 2, C: (5 * durationMs) / 6 };
+  const positions = {
+    A: durationMs / 6,
+    B: durationMs / 3,
+    C: durationMs / 2,
+    D: (2 * durationMs) / 3,
+    E: (5 * durationMs) / 6
+  };
   return Math.floor(positions[part] || 0);
 }
 
@@ -430,14 +444,84 @@ function seekPreview(durationMs, part) {
   return player.seek(previewPosition(durationMs, part));
 }
 
+async function fetchPlaybackState(token) {
+  try {
+    const res = await spFetch("https://api.spotify.com/v1/me/player", token);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || !data.item) return null;
+    return {
+      uri: data.item.uri,
+      name: data.item.name,
+      artists: data.item.artists.map(a => a.name).join(", "),
+      image: data.item.album && data.item.album.images.length ? data.item.album.images[0].url : null,
+      durationMs: data.item.duration_ms,
+      position: data.progress_ms || 0,
+      paused: !data.is_playing,
+      timestamp: Date.now()
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 async function playFromGesture(track, token, positionMs) {
   if (player) await player.activateElement();
   pendingTrackUri = track.uri;
+  pendingTrackUriAt = Date.now();
   try {
     await playTrack(track.uri, token, positionMs);
   } catch (err) {
     pendingTrackUri = null;
+    pendingTrackUriAt = 0;
     throw err;
+  }
+  setTimeout(async () => {
+    if (pendingTrackUri !== track.uri) return;
+    const api = await fetchPlaybackState(token);
+    if (!api) return;
+    if (api.uri === track.uri) return;
+    pendingTrackUri = null;
+    pendingTrackUriAt = 0;
+    sdkStaleUri = track.uri;
+    const cached = findCachedTrack(api.uri);
+    currentTrack = cached || {
+      uri: api.uri,
+      name: api.name,
+      artists: api.artists,
+      durationMs: api.durationMs,
+      image: api.image
+    };
+    el.title.textContent = currentTrack.name;
+    el.artists.textContent = currentTrack.artists;
+    bindImg(el.art, currentTrack.image);
+    lastState = {
+      paused: api.paused,
+      position: api.position,
+      duration: api.durationMs,
+      timestamp: api.timestamp,
+      track_window: { current_track: { uri: api.uri } }
+    };
+    startProgress(lastState);
+    const toggleIcon = document.querySelector("#player-view .np-toggle i");
+    if (toggleIcon) toggleIcon.className = api.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
+    highlightTracks();
+    markGridHasTrack();
+  }, 1200);
+}
+
+async function saveToLibrary(track, token, attempt = 1) {
+  const res = await fetch("https://api.spotify.com/v1/me/library", {
+    method: "PUT",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ uris: [track.uri] })
+  });
+  if (!res.ok) {
+    if (attempt < 2 && (res.status >= 500 || res.status === 429)) {
+      await new Promise(r => setTimeout(r, 800 * attempt));
+      return saveToLibrary(track, token, attempt + 1);
+    }
+    throw new Error("ERROR library " + res.status);
   }
 }
 
@@ -504,6 +588,7 @@ function renderSourceGrid() {
     grid.appendChild(btn);
   }
   el.source.style.display = "none";
+  grid.style.display = sourcesCollapsed ? "none" : "grid";
 }
 
 async function selectSource(name) {
@@ -598,6 +683,30 @@ function renderTracks() {
     });
     el.list.appendChild(card);
   }
+  const zoom = document.createElement("div");
+  zoom.className = "songs-zoom";
+  const sKey = "sp_songs_scale";
+  const minus = document.createElement("button");
+  minus.type = "button";
+  minus.textContent = "-";
+  const plus = document.createElement("button");
+  plus.type = "button";
+  plus.textContent = "+";
+  const applyZoom = () => {
+    const v = Number(localStorage.getItem(sKey) || 1);
+    el.list.style.gridTemplateColumns = `repeat(auto-fill, minmax(${Math.round(160 * v)}px, 1fr))`;
+  };
+  minus.addEventListener("click", () => {
+    localStorage.setItem(sKey, String(Math.max(0.6, Number(localStorage.getItem(sKey) || 1) - 0.1)));
+    applyZoom();
+  });
+  plus.addEventListener("click", () => {
+    localStorage.setItem(sKey, String(Math.min(2, Number(localStorage.getItem(sKey) || 1) + 0.1)));
+    applyZoom();
+  });
+  zoom.append(minus, plus);
+  el.list.insertBefore(zoom, el.list.firstChild);
+  applyZoom();
 }
 
 function highlightTracks() {
@@ -683,6 +792,8 @@ async function removeTrack(track, name, token) {
   }
 }
 
+
+
 async function onAdd(name, btn) {
   if (!currentTrack) {
     setFeedback("ERROR no current track", true);
@@ -693,12 +804,24 @@ async function onAdd(name, btn) {
   btn.classList.add("pending");
   try {
     const token = await getToken();
+    btn.classList.remove("pending");
     if (already) {
       await removeTrack(currentTrack, name, token);
       setFeedback("removed from " + name, false);
+      renderTracks();
+      highlightTracks();
     } else {
       const added = await addTrack(currentTrack, name, token);
       setFeedback(added ? "added to " + name : "already in " + name, false);
+      if (added) {
+        try {
+          await saveToLibrary(currentTrack, token);
+        } catch (err) {
+          setFeedback("added, library " + err.message, true);
+        }
+      }
+      btn.classList.add("ok");
+      setTimeout(() => btn.classList.remove("ok"), 1200);
     }
     renderGrid();
   } catch (err) {
@@ -720,20 +843,32 @@ function onPlayerState(state) {
   const prev = lastState;
   lastState = state;
   if (!state) return;
+    console.log("state", state && state.track_window.current_track && state.track_window.current_track.uri, state && state.paused, pendingTrackUri);
   const sdkTrack = state.track_window.current_track;
-  if (pendingTrackUri) {
+      if (pendingTrackUri) {
     if (sdkTrack && sdkTrack.uri === pendingTrackUri) {
       pendingTrackUri = null;
+      pendingTrackUriAt = 0;
+    } else if (Date.now() - pendingTrackUriAt > 3000) {
+      pendingTrackUri = null;
+      pendingTrackUriAt = 0;
     } else {
       return;
     }
+  }
+  if (sdkStaleUri) {
+    if (sdkTrack && sdkTrack.uri === sdkStaleUri) {
+      const toggleIcon = document.querySelector("#player-view .np-toggle i");
+      if (toggleIcon) toggleIcon.className = state.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
+      return;
+    }
+    sdkStaleUri = null;
   }
   const prevUri = prev && prev.track_window && prev.track_window.current_track
     ? prev.track_window.current_track.uri
     : null;
   if (sdkTrack && sdkTrack.uri !== prevUri) {
     document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.add("active"));
-    markGridHasTrack();
   }
   if (sdkTrack) {
     const fromCache = findCachedTrack(sdkTrack.uri);
@@ -761,6 +896,7 @@ function onPlayerState(state) {
   }
   highlightTracks();
   startProgress(state);
+  markGridHasTrack();
 }
 
 function findCachedTrack(uri) {
@@ -826,27 +962,7 @@ async function startSession(token) {
   }
   renderGrid();
   renderSourceGrid();
-  const name = sourceName();
-  try {
-    if (!cache[name] || !cache[name].tracks || !cache[name].tracks.length) {
-      setStatus("Loading " + name);
-      await loadPlaylist(name, token);
-    }
-
-        if (!lastState || !lastState.track_window || !lastState.track_window.current_track) {
-      const tracks = (cache[name] && cache[name].tracks) || [];
-      const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
-      if (first) {
-        currentTrack = first;
-        updatePlayerBar(first);
-      }
-    }
-    renderTracks();
-    highlightTracks();
-    markGridHasTrack();
-  } catch (err) {
-    setFeedback(err.message, true);
-  }
+  renderTracks();
   setStatus("Ready · " + who);
 }
 
@@ -1159,9 +1275,10 @@ function buildPlayer() {
         highlightTracks();
         return;
       }
-      await fetch("https://api.spotify.com/v1/me/player/play?device_id=" + deviceId, {
+      await fetch("https://api.spotify.com/v1/me/player", {
         method: "PUT",
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ device_ids: [deviceId], play: true })
       });
     } catch (err) {
       setFeedback(err.message, true);
@@ -1173,7 +1290,7 @@ function buildPlayer() {
   seeks.className = "np-seeks";
     const presetPill = document.createElement("div");
   presetPill.className = "np-preset-pill";
-  const presets = [["A", "1"], ["B", "2"], ["C", "3"]];
+  const presets = [["A", "1"], ["B", "2"], ["C", "3"], ["D", "4"], ["E", "5"]];
   const presetBtns = {};
   const paintPresets = mode => {
     for (const [p, btn] of Object.entries(presetBtns)) {
@@ -1329,6 +1446,307 @@ async function reloadGridPlaylists() {
   highlightTracks();
 }
 
+async function reconcileDevice() {
+  const token = await getToken();
+  const api = await fetchPlaybackState(token);
+  if (!api) return;
+  const res = await spFetch("https://api.spotify.com/v1/me/player", token);
+  if (!res.ok) return;
+  const data = await res.json();
+  const activeId = data && data.device && data.device.id;
+  if (activeId && activeId === deviceId) return;
+  pendingTrackUri = null;
+  pendingTrackUriAt = 0;
+  sdkStaleUri = null;
+  const cached = findCachedTrack(api.uri);
+  currentTrack = cached || {
+    uri: api.uri,
+    name: api.name,
+    artists: api.artists,
+    durationMs: api.durationMs,
+    image: api.image
+  };
+  el.title.textContent = currentTrack.name;
+  el.artists.textContent = currentTrack.artists;
+  bindImg(el.art, currentTrack.image);
+  lastState = {
+    paused: api.paused,
+    position: api.position,
+    duration: api.durationMs,
+    timestamp: api.timestamp,
+    track_window: { current_track: { uri: api.uri } }
+  };
+  startProgress(lastState);
+  const toggleIcon = document.querySelector("#player-view .np-toggle i");
+  if (toggleIcon) toggleIcon.className = api.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
+  highlightTracks();
+  markGridHasTrack();
+  setStatus("Playing on " + (data.device.name || "another device"));
+}
+
+function renderToolsGrid() {
+  const grid = document.getElementById("tools-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  grid.style.display = toolsCollapsed ? "none" : "grid";
+  if (toolsCollapsed) return;
+  for (const t of TOOLS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tool-tile";
+    btn.innerHTML = '<i class="fa-solid ' + t.icon + '"></i><span>' + t.label + '</span>';
+    btn.title = t.desc;
+    btn.addEventListener("click", async () => {
+      try {
+        const token = await getToken();
+        if (t.id === "manual") {
+          await openManualPlaylist(token);
+          return;
+        }
+        await openTool(t.id, token);
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
+    });
+    grid.appendChild(btn);
+  }
+}
+
+async function createPlaylistWithTracks(name, uris, token) {
+  const plRes = await fetch("https://api.spotify.com/v1/me/playlists", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ name, public: false, description: "Created by Playlist Filter" })
+  });
+  if (!plRes.ok) throw new Error("ERROR create " + plRes.status);
+  const pl = await plRes.json();
+  const unique = [...new Set(uris)];
+  for (let i = 0; i < unique.length; i += 100) {
+    const batch = unique.slice(i, i + 100);
+    let attempt = 0;
+    while (true) {
+      const addRes = await fetch("https://api.spotify.com/v1/playlists/" + pl.id + "/items", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ uris: batch })
+      });
+      if (addRes.ok) break;
+      if (addRes.status === 429 && attempt < 4) {
+        const ra = Number(addRes.headers.get("Retry-After"));
+        const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : 2000 * Math.pow(2, attempt);
+        await new Promise(r => setTimeout(r, Math.min(wait, 30000)));
+        attempt++;
+        continue;
+      }
+      throw new Error("ERROR add " + addRes.status);
+    }
+  }
+  return pl;
+}
+
+async function ensureLoaded(names, token) {
+  for (const name of names) {
+    const c = cache[name];
+    if (c && c.tracks && c.tracks.length && !c.partial) continue;
+    setStatus("Loading " + name);
+    await loadPlaylist(name, token);
+  }
+}
+
+async function openTool(toolId, token) {
+  const old = document.getElementById("tool-panel");
+  if (old) old.remove();
+
+  const meta = {
+    combine:   { title: "Combine",   hint: "Union of the checked playlists. Duplicates are dropped." },
+    subtract:  { title: "Subtract",  hint: "Keep songs in the origin that are NOT in any checked playlist." },
+    intersect: { title: "Intersect", hint: "Keep only songs present in every checked playlist." },
+    dedupe:    { title: "Dedupe",    hint: "Copy the first checked playlist with duplicates removed." }
+  }[toolId];
+
+  const panel = document.createElement("div");
+  panel.id = "tool-panel";
+  panel.className = "tool-panel";
+
+  const head = document.createElement("div");
+  head.className = "tool-head";
+  const h3 = document.createElement("h3");
+  h3.textContent = meta.title;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "tool-close";
+  close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  close.addEventListener("click", () => panel.remove());
+  head.append(h3, close);
+
+  const hint = document.createElement("p");
+  hint.className = "tool-hint";
+  hint.textContent = meta.hint;
+  panel.append(head, hint);
+
+  let originSelect = null;
+  if (toolId === "subtract") {
+    const wrap = document.createElement("label");
+    wrap.className = "tool-label";
+    wrap.textContent = "Origin playlist";
+    originSelect = document.createElement("select");
+    for (const name of Object.keys(PLAYLISTS)) {
+      if (PLAYLISTS[name].extra) continue;
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      originSelect.appendChild(opt);
+    }
+    originSelect.addEventListener("change", updatePreview);
+    wrap.appendChild(originSelect);
+    panel.appendChild(wrap);
+  }
+
+  const list = document.createElement("div");
+  list.className = "tool-list";
+  const checks = new Map();
+  for (const name of Object.keys(PLAYLISTS)) {
+    if (PLAYLISTS[name].extra) continue;
+    const row = document.createElement("label");
+    row.className = "tool-row";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = name;
+    cb.addEventListener("change", updatePreview);
+    const span = document.createElement("span");
+    span.textContent = name;
+    row.append(cb, span);
+    checks.set(name, cb);
+    list.appendChild(row);
+  }
+  panel.appendChild(list);
+
+  const nameWrap = document.createElement("label");
+  nameWrap.className = "tool-label";
+  nameWrap.textContent = "New playlist name";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.value = meta.title + " " + new Date().toISOString().slice(0, 10);
+  nameWrap.appendChild(nameInput);
+  panel.appendChild(nameWrap);
+
+  const preview = document.createElement("p");
+  preview.className = "tool-preview";
+  panel.appendChild(preview);
+
+  const actions = document.createElement("div");
+  actions.className = "tool-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => panel.remove());
+  const create = document.createElement("button");
+  create.type = "button";
+  create.className = "tool-create";
+  create.textContent = "Create playlist";
+  actions.append(cancel, create);
+  panel.appendChild(actions);
+
+  function collect() {
+    const origin = originSelect ? originSelect.value : null;
+    const others = [...checks.entries()]
+      .filter(([n, cb]) => cb.checked && n !== origin)
+      .map(([n]) => n);
+    return { origin, others };
+  }
+
+  function compute() {
+    const { origin, others } = collect();
+    if (toolId === "combine") {
+      const seen = new Set();
+      const out = [];
+      for (const name of others) {
+        for (const t of (cache[name] && cache[name].tracks) || []) {
+          if (seen.has(t.uri)) continue;
+          seen.add(t.uri);
+          out.push(t.uri);
+        }
+      }
+      return out;
+    }
+    if (toolId === "subtract") {
+      if (!origin) return [];
+      const remove = new Set();
+      for (const name of others) {
+        for (const t of (cache[name] && cache[name].tracks) || []) remove.add(t.uri);
+      }
+      return ((cache[origin] && cache[origin].tracks) || []).map(t => t.uri).filter(u => !remove.has(u));
+    }
+    if (toolId === "intersect") {
+      if (others.length < 2) return [];
+      const sets = others.map(n => new Set(((cache[n] && cache[n].tracks) || []).map(t => t.uri)));
+      return [...sets[0]].filter(u => sets.every(s => s.has(u)));
+    }
+    if (toolId === "dedupe") {
+      const name = others[0];
+      if (!name) return [];
+      const seen = new Set();
+      return ((cache[name] && cache[name].tracks) || []).map(t => t.uri).filter(u => {
+        if (seen.has(u)) return false;
+        seen.add(u);
+        return true;
+      });
+    }
+    return [];
+  }
+
+  function updatePreview() {
+    const { origin, others } = collect();
+    const needed = origin ? [origin, ...others] : others;
+    const missing = needed.filter(n => !cache[n] || !cache[n].tracks || cache[n].partial);
+    if (missing.length) {
+      preview.textContent = "Will load: " + missing.join(", ");
+      return;
+    }
+    const out = compute();
+    preview.textContent = out.length + " songs · " + new Set(out).size + " unique";
+  }
+
+  create.addEventListener("click", async () => {
+    const { origin, others } = collect();
+    const needed = origin ? [origin, ...others] : others;
+    if (!needed.length) {
+      setFeedback("ERROR select a playlist", true);
+      return;
+    }
+    if (toolId === "intersect" && others.length < 2) {
+      setFeedback("ERROR intersect needs 2+", true);
+      return;
+    }
+    create.disabled = true;
+    create.textContent = "Working…";
+    try {
+      await ensureLoaded(needed, token);
+      const uris = compute();
+      if (!uris.length) throw new Error("ERROR empty result");
+      const name = nameInput.value.trim() || meta.title;
+      setStatus("Creating " + name);
+      const pl = await createPlaylistWithTracks(name, uris, token);
+      PLAYLISTS[name] = { id: pl.id, label: name, image: null };
+      SOURCE_CANDIDATES.push(name);
+      cache[name] = { id: pl.id, label: name, image: null, loadedAt: Date.now(), tracks: [], partial: true };
+      writeCache();
+      renderSourceGrid();
+      renderGrid();
+      panel.remove();
+      setFeedback("created " + name + " · " + uris.length + " songs", false);
+      setStatus("Ready · Playlist Filter");
+    } catch (err) {
+      create.disabled = false;
+      create.textContent = "Create playlist";
+      setFeedback(err.message, true);
+    }
+  });
+
+  updatePreview();
+  document.getElementById("tool-panel-host").appendChild(panel);
+}
+
 async function boot() {
   renderGrid();
   buildPlayer();
@@ -1342,6 +1760,7 @@ async function boot() {
     fa.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css";
     document.head.appendChild(fa);
   }
+    el.refresh.style.display = "none";
 
   const songsRow = document.createElement("div");
   songsRow.className = "songs-row";
@@ -1453,36 +1872,30 @@ async function boot() {
       showAuth(err.message);
     }
   });
-  el.refresh.addEventListener("click", async () => {
-    try {
-      const token = await getToken();
-      const name = sourceName();
-      setStatus("Refreshing " + name);
-      await loadPlaylist(name, token);
-      try {
-        await syncPull(token);
-      } catch (err) {
-        setFeedback(err.message, true);
-      }
-      setStatus("Ready · Playlist Filter");
-      renderSourceGrid();
-      renderTracks();
-      renderGrid();
-    } catch (err) {
-      setFeedback(err.message, true);
-    }
+
+    const toolsHost = document.createElement("div");
+  toolsHost.id = "tools-host";
+  const toolsGrid = document.createElement("div");
+  toolsGrid.id = "tools-grid";
+  const panelHost = document.createElement("div");
+  panelHost.id = "tool-panel-host";
+  toolsHost.append(toolsGrid, panelHost);
+  toolbar.parentElement.insertBefore(toolsHost, toolbar.nextSibling);
+
+  const toolsBtn = document.createElement("button");
+  toolsBtn.type = "button";
+  toolsBtn.innerHTML = '<i class="fa-solid fa-toolbox"></i><span>Tools</span>';
+  const paintTools = () => toolsBtn.classList.toggle("active", !toolsCollapsed);
+  paintTools();
+  toolsBtn.addEventListener("click", () => {
+    toolsCollapsed = !toolsCollapsed;
+    localStorage.setItem("sp_tools_collapsed", toolsCollapsed ? "1" : "0");
+    renderToolsGrid();
+    paintTools();
   });
-  const manualBtn = document.createElement("button");
-  manualBtn.type = "button";
-  manualBtn.textContent = "Manual";
-  toolbar.appendChild(manualBtn);
-  manualBtn.addEventListener("click", async () => {
-    try {
-      await openManualPlaylist(await getToken());
-    } catch (err) {
-      setFeedback(err.message, true);
-    }
-  });
+  toolbar.appendChild(toolsBtn);
+  renderToolsGrid();
+
   const hiddenBtn = document.createElement("button");
   hiddenBtn.type = "button";
   hiddenBtn.textContent = "Hidden";
@@ -1491,6 +1904,20 @@ async function boot() {
     showHiddenGrid = !showHiddenGrid;
     renderGrid();
   });
+
+  const sourcesBtn = document.createElement("button");
+  sourcesBtn.type = "button";
+  sourcesBtn.innerHTML = '<i class="fa-solid fa-images"></i><span>Sources</span>';
+  const paintSources = () => sourcesBtn.classList.toggle("active", sourcesCollapsed);
+  paintSources();
+  sourcesBtn.addEventListener("click", () => {
+    sourcesCollapsed = !sourcesCollapsed;
+    localStorage.setItem("sp_sources_collapsed", sourcesCollapsed ? "1" : "0");
+    const grid = document.getElementById("source-grid");
+    if (grid) grid.style.display = sourcesCollapsed ? "none" : "grid";
+    paintSources();
+  });
+  toolbar.appendChild(sourcesBtn);
 
   const reloadBtn = document.createElement("button");
   reloadBtn.type = "button";
@@ -1519,16 +1946,10 @@ async function boot() {
   });
     try {
     readCache();
-    document.addEventListener("visibilitychange", async () => {
+        document.addEventListener("visibilitychange", async () => {
       if (document.visibilityState !== "visible") return;
-      const name = sourceName();
       try {
-        const token = await getToken();
-        await loadPlaylist(name, token);
-        renderTracks();
-        renderGrid();
-        highlightTracks();
-        markGridHasTrack();
+        await reconcileDevice();
       } catch (err) {
         setFeedback(err.message, true);
       }
