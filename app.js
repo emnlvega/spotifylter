@@ -93,6 +93,7 @@ let sdkStaleUri = null;
 let sourcesCollapsed = localStorage.getItem("sp_sources_collapsed") === "1";
 let toolsCollapsed = localStorage.getItem("sp_tools_collapsed") !== "0";
 let playAll = localStorage.getItem("sp_play_all") === "1";
+let reverseOrder = localStorage.getItem("sp_reverse") === "1";
 let paintTargetBar = () => {};
 
 function currentPlayingUri() {
@@ -391,18 +392,21 @@ async function spFetch(url, token, attempt = 1) {
   return res;
 }
 
-async function loadPlaylist(name, token) {
+async function loadPlaylist(name, token, prefetchedMeta) {
   const raw = String(PLAYLISTS[name].id || "").trim();
   const match = raw.match(/([0-9A-Za-z]{22})(?:[?/]|$)/);
   const id = match ? match[1] : raw;
-  const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${id}`, {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!metaRes.ok) throw new Error("ERROR meta " + name + " " + metaRes.status);
-  const meta = await metaRes.json();
+  let meta = prefetchedMeta || null;
+  if (!meta) {
+    const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${id}`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!metaRes.ok) throw new Error("ERROR meta " + name + " " + metaRes.status);
+    meta = await metaRes.json();
+  }
   const tracks = [];
-    let url = `https://api.spotify.com/v1/playlists/${id}/items?limit=100`;
+  let url = `https://api.spotify.com/v1/playlists/${id}/items?limit=100`;
   while (url) {
     const res = await fetch(url, {
       cache: "no-store",
@@ -429,6 +433,7 @@ async function loadPlaylist(name, token) {
     label: meta.name,
     image: meta.images && meta.images.length ? meta.images[0].url : null,
     loadedAt: Date.now(),
+    total: meta.tracks && typeof meta.tracks.total === "number" ? meta.tracks.total : tracks.length,
     tracks
   };
   writeCache();
@@ -532,11 +537,11 @@ async function playTrack(trackUri, token, positionMs, attempt = 1) {
 
 function previewPosition(durationMs, part) {
   const positions = {
-    A: durationMs / 6,
-    B: durationMs / 3,
-    C: durationMs / 2,
-    D: (2 * durationMs) / 3,
-    E: (5 * durationMs) / 6
+    A: durationMs * 0.10,
+    B: durationMs * 0.30,
+    C: durationMs * 0.50,
+    D: durationMs * 0.60,
+    E: durationMs * 0.80
   };
   return Math.floor(positions[part] || 0);
 }
@@ -558,7 +563,7 @@ async function fetchPlaybackState(token) {
     return {
       uri: data.item.uri,
       name: data.item.name,
-      artists: data.item.artists.map(a => a.name).join(", "),
+      artists: (data.item.artists || []).map(a => a.name).join(", "),
       image: data.item.album && data.item.album.images.length ? data.item.album.images[0].url : null,
       durationMs: data.item.duration_ms,
       position: data.progress_ms || 0,
@@ -828,13 +833,34 @@ async function selectSource(name, play) {
   }
   try {
     const token = await getToken();
-    setStatus("Loading " + name);
-    await loadPlaylist(name, token);
-    setStatus("Ready · spotifylter");
-    renderTracks();
-    pickFirst();
-    highlightTracks();
-    markGridHasTrack();
+    const raw = String(PLAYLISTS[name].id || "").trim();
+    const match = raw.match(/([0-9A-Za-z]{22})(?:[?/]|$)/);
+    const id = match ? match[1] : raw;
+    setStatus("Checking " + name);
+    const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${id}`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!metaRes.ok) throw new Error("ERROR meta " + name + " " + metaRes.status);
+    const meta = await metaRes.json();
+    const realTotal = meta.tracks && typeof meta.tracks.total === "number" ? meta.tracks.total : null;
+    const cachedTotal = cached && typeof cached.total === "number" ? cached.total : (cached && cached.tracks ? cached.tracks.length : -1);
+    const inSync = cached && !cached.partial && realTotal !== null && cachedTotal === realTotal;
+    if (inSync) {
+      setStatus("Ready · Playlist Filter");
+      renderTracks();
+      pickFirst();
+      highlightTracks();
+      markGridHasTrack();
+    } else {
+      setStatus("Loading " + name);
+      await loadPlaylist(name, token, meta);
+      setStatus("Ready · Playlist Filter");
+      renderTracks();
+      pickFirst();
+      highlightTracks();
+      markGridHasTrack();
+    }
     if (play && currentTrack) {
       await playFromGesture(currentTrack, token);
       updatePlayerBar(currentTrack);
@@ -858,10 +884,14 @@ function renderSourceSelect() {
   el.source.value = SOURCE_CANDIDATES.includes(saved) ? saved : SOURCE_CANDIDATES[0];
 }
 
+function displayTracks(name) {
+  const all = (cache[name] && cache[name].tracks) || [];
+  return reverseOrder ? [...all].reverse() : all;
+}
+
 function renderTracks() {
   const name = sourceName();
-  const entry = cache[name];
-  const tracks = entry && entry.tracks ? entry.tracks : [];
+  const tracks = displayTracks(name);
   let idx = 0;
   el.list.innerHTML = "";
   for (const track of tracks) {
@@ -905,34 +935,11 @@ function renderTracks() {
     });
     el.list.appendChild(card);
   }
-  const zoom = document.createElement("div");
-  zoom.className = "songs-zoom";
-  const sKey = "sp_songs_scale";
-  const minus = document.createElement("button");
-  minus.type = "button";
-  minus.textContent = "-";
-  const plus = document.createElement("button");
-  plus.type = "button";
-  plus.textContent = "+";
-  const applyZoom = () => {
-    const v = Number(localStorage.getItem(sKey) || 1);
-    el.list.style.gridTemplateColumns = `repeat(auto-fill, minmax(${Math.round(160 * v)}px, 1fr))`;
-  };
-  minus.addEventListener("click", () => {
-    localStorage.setItem(sKey, String(Math.max(0.6, Number(localStorage.getItem(sKey) || 1) - 0.1)));
-    applyZoom();
-  });
-  plus.addEventListener("click", () => {
-    localStorage.setItem(sKey, String(Math.min(2, Number(localStorage.getItem(sKey) || 1) + 0.1)));
-    applyZoom();
-  });
-  zoom.append(minus, plus);
-  el.list.insertBefore(zoom, el.list.firstChild);
-  applyZoom();
+
 }
 
 function highlightTracks() {
-  const tracks = (cache[sourceName()] && cache[sourceName()].tracks) || [];
+  const tracks = displayTracks(sourceName());
   for (const node of el.list.querySelectorAll(".track")) {
     const i = Number(node.dataset.index);
     node.classList.toggle("current", Boolean(currentTrack) && sameRecording(tracks[i], currentTrack));
@@ -1220,7 +1227,7 @@ function onPlayerState(state) {
     const sdkRef = {
       uri: sdkTrack.uri,
       name: sdkTrack.name,
-      artists: sdkTrack.artists.map(a => a.name).join(", "),
+      artists: (sdkTrack.artists || []).map(a => a.name).join(", "),
       durationMs: sdkTrack.duration_ms
     };
     if (!currentTrack || !sameRecording(currentTrack, sdkRef)) {
@@ -1229,7 +1236,7 @@ function onPlayerState(state) {
       else currentTrack = { ...sdkRef, image: sdkTrack.album && sdkTrack.album.images && sdkTrack.album.images.length ? sdkTrack.album.images[0].url : null };
     }
     el.title.textContent = currentTrack.name;
-    el.artists.textContent = currentTrack.artists;
+    el.artists.textContent = (sdkTrack.artists || []).map(a => a.name).join(", ");
     bindImg(el.art, currentTrack.image);
     if (pendingSeek && currentTrack) {
       const part = pendingSeek;
@@ -1567,7 +1574,7 @@ function isUnplayable(err) {
 async function playAdjacent(dir, hide) {
   if (shuffleOn && dir === 1) return playNextShuffled(hide);
   const name = sourceName();
-  const tracks = (cache[name] && cache[name].tracks) || [];
+  const tracks = displayTracks(name);
   if (!tracks.length || !currentTrack) return;
   const original = currentTrack;
   if (dir === 1 && hide !== false && !playAll) setHidden(name, original.uri, true);
@@ -1584,6 +1591,7 @@ async function playAdjacent(dir, hide) {
     try {
       await playFromGesture(candidate, token);
       currentTrack = candidate;
+      document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.add("active"));
       updatePlayerBar(candidate);
       renderTracks();
       highlightTracks();
@@ -1649,21 +1657,24 @@ function buildPlayer() {
     try {
       await player.activateElement();
       const token = await getToken();
-      const sdkTrack = lastState && lastState.track_window && lastState.track_window.current_track;
-      const sdkRef = sdkTrack ? {
-        uri: sdkTrack.uri,
-        name: sdkTrack.name,
-        artists: sdkTrack.artists.map(a => a.name).join(", "),
-        durationMs: sdkTrack.duration_ms
-      } : null;
-      if (lastState && !lastState.paused) {
+      const real = await fetchPlaybackState(token);
+      const isPlaying = real ? !real.paused : (lastState ? !lastState.paused : false);
+      if (isPlaying) {
         await fetch("https://api.spotify.com/v1/me/player/pause", {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}` }
         });
         return;
       }
-      if (currentTrack && (!sdkRef || !sameRecording(currentTrack, sdkRef))) {
+      if (real && currentTrack) {
+        const realRef = { uri: real.uri, name: real.name, artists: real.artists, durationMs: real.durationMs };
+        if (!sameRecording(currentTrack, realRef)) {
+          await playFromGesture(currentTrack, token);
+          updatePlayerBar(currentTrack);
+          highlightTracks();
+          return;
+        }
+      } else if (currentTrack && !real) {
         await playFromGesture(currentTrack, token);
         updatePlayerBar(currentTrack);
         highlightTracks();
@@ -1892,7 +1903,7 @@ function buildHeader() {
   header.id = "app-header";
   const logo = document.createElement("span");
   logo.className = "header-logo";
-  logo.innerHTML = '<svg viewBox="331.17 396.98 1355.17 1355.19" xmlns="http://www.w3.org/2000/svg"><path d="M474.012,766.002L420.369,766.002C371.106,766.002 331.17,726.066 331.17,676.803L331.17,486.185C331.17,436.922 371.106,396.986 420.369,396.986L610.988,396.986C660.251,396.986 700.186,436.922 700.186,486.185L700.186,539.827L824.253,539.827L824.253,468.896C824.253,429.18 853.487,396.986 889.55,396.986L1127.97,396.986C1164.033,396.986 1193.266,429.18 1193.266,468.896L1193.266,539.827L1317.331,539.827L1317.331,486.185C1317.331,436.922 1357.266,396.986 1406.529,396.986L1597.148,396.986C1646.411,396.986 1686.347,436.922 1686.347,486.185L1686.347,676.803C1686.347,726.066 1646.411,766.002 1597.148,766.002L1543.505,766.002L1543.505,939.38L1621.049,939.38C1657.112,939.38 1686.346,971.574 1686.346,1011.29L1686.346,1680.252C1686.346,1719.968 1657.112,1752.162 1621.049,1752.162L1382.63,1752.162C1346.567,1752.162 1317.333,1719.968 1317.333,1680.252L1317.333,1011.29C1317.333,971.574 1346.567,939.38 1382.63,939.38L1460.172,939.38L1460.172,766.002L1406.529,766.002C1357.266,766.002 1317.331,726.066 1317.331,676.803L1317.331,623.161L1193.266,623.161L1193.266,1137.858C1193.266,1177.573 1164.033,1209.768 1127.97,1209.768L889.55,1209.768C853.487,1209.768 824.253,1177.573 824.253,1137.858L824.253,623.161L700.186,623.161L700.186,676.803C700.186,726.066 660.251,766.002 610.988,766.002L557.346,766.002L557.346,939.38L634.889,939.38C670.952,939.38 700.185,971.574 700.185,1011.29L700.185,1680.252C700.185,1719.968 670.952,1752.162 634.889,1752.162L396.469,1752.162C360.406,1752.162 331.173,1719.968 331.173,1680.252L331.173,1011.29C331.173,971.574 360.406,939.38 396.469,939.38L474.012,939.38L474.012,766.002ZM623.61,676.803L623.61,486.185C623.61,479.214 617.959,473.562 610.988,473.562L420.369,473.562C413.398,473.562 407.747,479.214 407.747,486.185L407.747,676.803C407.747,683.774 413.398,689.425 420.369,689.425L610.988,689.425C617.959,689.425 623.61,683.774 623.61,676.803ZM1609.77,676.803L1609.77,486.185C1609.77,479.214 1604.119,473.562 1597.148,473.562L1406.529,473.562C1399.558,473.562 1393.907,479.214 1393.907,486.185L1393.907,676.803C1393.907,683.774 1399.558,689.425 1406.529,689.425L1597.148,689.425C1604.119,689.425 1609.77,683.774 1609.77,676.803Z" fill="currentColor"/></svg>';
+  logo.innerHTML = '<svg viewBox="0 0 1883 1883" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1,0,0,1,-100.338058,-100.340635)"><g transform="matrix(4.166667,0,0,4.166667,0,0)"><path d="M390.967,351.325L390.967,314.006L51.115,314.006C36.097,314.006 24.081,302.781 24.081,289.145L24.081,210.855C24.081,197.219 36.097,185.994 51.115,185.994L67.143,185.994L67.143,148.675L56.792,148.675C40.615,148.675 27.502,135.561 27.502,119.385L27.502,56.792C27.502,40.616 40.615,27.502 56.792,27.502L119.385,27.502C135.561,27.502 148.675,40.616 148.675,56.792L148.675,67.27C149.172,67.186 149.678,67.143 150.19,67.143L202.186,67.143L202.186,48.943C202.186,35.307 214.202,24.082 229.22,24.082L448.885,24.082C463.903,24.082 475.919,35.307 475.919,48.943L475.919,127.233C475.919,140.869 463.903,152.095 448.885,152.095L229.22,152.095C214.202,152.095 202.186,140.869 202.186,127.233L202.186,109.034L150.19,109.034C149.678,109.034 149.172,108.991 148.675,108.907L148.675,119.385C148.675,135.561 135.561,148.675 119.385,148.675L109.034,148.675L109.034,185.994L445.465,185.994C460.482,185.994 472.498,197.219 472.498,210.855L472.498,289.145C472.498,302.781 460.482,314.006 445.465,314.006L432.857,314.006L432.857,351.325L443.208,351.325C459.385,351.325 472.498,364.438 472.498,380.615L472.498,443.207C472.498,459.384 459.385,472.498 443.208,472.498L380.615,472.498C364.439,472.498 351.325,459.384 351.325,443.207L351.325,432.488C350.494,432.73 349.637,432.856 348.76,432.856L301.234,432.856L301.234,451.057C301.234,464.693 289.218,475.918 274.201,475.918L54.535,475.918C39.518,475.918 27.502,464.693 27.502,451.057L27.502,372.767C27.502,359.131 39.518,347.905 54.535,347.905L274.201,347.905C289.218,347.905 301.234,359.131 301.234,372.767L301.234,390.966L348.76,390.966C349.637,390.966 350.494,391.092 351.325,391.334L351.325,380.615C351.325,364.438 364.439,351.325 380.615,351.325L390.967,351.325ZM443.208,376.47L380.615,376.47C378.326,376.47 376.471,378.326 376.471,380.615L376.471,443.207C376.471,445.497 378.326,447.352 380.615,447.352L443.208,447.352C445.497,447.352 447.353,445.497 447.353,443.207L447.353,380.615C447.353,378.326 445.497,376.47 443.208,376.47ZM119.385,52.647L56.792,52.647C54.503,52.647 52.647,54.503 52.647,56.792L52.647,119.385C52.647,121.674 54.503,123.53 56.792,123.53L119.385,123.53C121.674,123.53 123.529,121.674 123.529,119.385L123.529,56.792C123.529,54.503 121.674,52.647 119.385,52.647Z" fill="currentColor"/></g></g></svg>';
   const wrap = document.createElement("div");
   wrap.className = "header-text";
   const h1 = document.createElement("h1");
@@ -2404,7 +2415,7 @@ function buildAuthBox() {
   el.auth.innerHTML = "";
     const logo = document.createElement("span");
   logo.className = "auth-logo";
-  logo.innerHTML = '<svg viewBox="331.17 396.98 1355.17 1355.19" xmlns="http://www.w3.org/2000/svg"><path d="M474.012,766.002L420.369,766.002C371.106,766.002 331.17,726.066 331.17,676.803L331.17,486.185C331.17,436.922 371.106,396.986 420.369,396.986L610.988,396.986C660.251,396.986 700.186,436.922 700.186,486.185L700.186,539.827L824.253,539.827L824.253,468.896C824.253,429.18 853.487,396.986 889.55,396.986L1127.97,396.986C1164.033,396.986 1193.266,429.18 1193.266,468.896L1193.266,539.827L1317.331,539.827L1317.331,486.185C1317.331,436.922 1357.266,396.986 1406.529,396.986L1597.148,396.986C1646.411,396.986 1686.347,436.922 1686.347,486.185L1686.347,676.803C1686.347,726.066 1646.411,766.002 1597.148,766.002L1543.505,766.002L1543.505,939.38L1621.049,939.38C1657.112,939.38 1686.346,971.574 1686.346,1011.29L1686.346,1680.252C1686.346,1719.968 1657.112,1752.162 1621.049,1752.162L1382.63,1752.162C1346.567,1752.162 1317.333,1719.968 1317.333,1680.252L1317.333,1011.29C1317.333,971.574 1346.567,939.38 1382.63,939.38L1460.172,939.38L1460.172,766.002L1406.529,766.002C1357.266,766.002 1317.331,726.066 1317.331,676.803L1317.331,623.161L1193.266,623.161L1193.266,1137.858C1193.266,1177.573 1164.033,1209.768 1127.97,1209.768L889.55,1209.768C853.487,1209.768 824.253,1177.573 824.253,1137.858L824.253,623.161L700.186,623.161L700.186,676.803C700.186,726.066 660.251,766.002 610.988,766.002L557.346,766.002L557.346,939.38L634.889,939.38C670.952,939.38 700.185,971.574 700.185,1011.29L700.185,1680.252C700.185,1719.968 670.952,1752.162 634.889,1752.162L396.469,1752.162C360.406,1752.162 331.173,1719.968 331.173,1680.252L331.173,1011.29C331.173,971.574 360.406,939.38 396.469,939.38L474.012,939.38L474.012,766.002ZM623.61,676.803L623.61,486.185C623.61,479.214 617.959,473.562 610.988,473.562L420.369,473.562C413.398,473.562 407.747,479.214 407.747,486.185L407.747,676.803C407.747,683.774 413.398,689.425 420.369,689.425L610.988,689.425C617.959,689.425 623.61,683.774 623.61,676.803ZM1609.77,676.803L1609.77,486.185C1609.77,479.214 1604.119,473.562 1597.148,473.562L1406.529,473.562C1399.558,473.562 1393.907,479.214 1393.907,486.185L1393.907,676.803C1393.907,683.774 1399.558,689.425 1406.529,689.425L1597.148,689.425C1604.119,689.425 1609.77,683.774 1609.77,676.803Z" fill="currentColor"/></svg>';
+  logo.innerHTML = '<svg viewBox="0 0 1883 1883" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1,0,0,1,-100.338058,-100.340635)"><g transform="matrix(4.166667,0,0,4.166667,0,0)"><path d="M390.967,351.325L390.967,314.006L51.115,314.006C36.097,314.006 24.081,302.781 24.081,289.145L24.081,210.855C24.081,197.219 36.097,185.994 51.115,185.994L67.143,185.994L67.143,148.675L56.792,148.675C40.615,148.675 27.502,135.561 27.502,119.385L27.502,56.792C27.502,40.616 40.615,27.502 56.792,27.502L119.385,27.502C135.561,27.502 148.675,40.616 148.675,56.792L148.675,67.27C149.172,67.186 149.678,67.143 150.19,67.143L202.186,67.143L202.186,48.943C202.186,35.307 214.202,24.082 229.22,24.082L448.885,24.082C463.903,24.082 475.919,35.307 475.919,48.943L475.919,127.233C475.919,140.869 463.903,152.095 448.885,152.095L229.22,152.095C214.202,152.095 202.186,140.869 202.186,127.233L202.186,109.034L150.19,109.034C149.678,109.034 149.172,108.991 148.675,108.907L148.675,119.385C148.675,135.561 135.561,148.675 119.385,148.675L109.034,148.675L109.034,185.994L445.465,185.994C460.482,185.994 472.498,197.219 472.498,210.855L472.498,289.145C472.498,302.781 460.482,314.006 445.465,314.006L432.857,314.006L432.857,351.325L443.208,351.325C459.385,351.325 472.498,364.438 472.498,380.615L472.498,443.207C472.498,459.384 459.385,472.498 443.208,472.498L380.615,472.498C364.439,472.498 351.325,459.384 351.325,443.207L351.325,432.488C350.494,432.73 349.637,432.856 348.76,432.856L301.234,432.856L301.234,451.057C301.234,464.693 289.218,475.918 274.201,475.918L54.535,475.918C39.518,475.918 27.502,464.693 27.502,451.057L27.502,372.767C27.502,359.131 39.518,347.905 54.535,347.905L274.201,347.905C289.218,347.905 301.234,359.131 301.234,372.767L301.234,390.966L348.76,390.966C349.637,390.966 350.494,391.092 351.325,391.334L351.325,380.615C351.325,364.438 364.439,351.325 380.615,351.325L390.967,351.325ZM443.208,376.47L380.615,376.47C378.326,376.47 376.471,378.326 376.471,380.615L376.471,443.207C376.471,445.497 378.326,447.352 380.615,447.352L443.208,447.352C445.497,447.352 447.353,445.497 447.353,443.207L447.353,380.615C447.353,378.326 445.497,376.47 443.208,376.47ZM119.385,52.647L56.792,52.647C54.503,52.647 52.647,54.503 52.647,56.792L52.647,119.385C52.647,121.674 54.503,123.53 56.792,123.53L119.385,123.53C121.674,123.53 123.529,121.674 123.529,119.385L123.529,56.792C123.529,54.503 121.674,52.647 119.385,52.647Z" fill="currentColor"/></g></g></svg>';
   const h2 = document.createElement("h2");
   h2.textContent = "spotifylter";
   const sub = document.createElement("p");
@@ -2486,20 +2497,6 @@ async function boot() {
   songsToggle.type = "button";
   songsToggle.className = "songs-toggle";
   songsToggle.innerHTML = '<i class="fa-solid fa-list-ul"></i><span>Songs</span>';
-  el.list.style.display = "none";
-  songsToggle.addEventListener("click", () => {
-    const open = el.list.style.display === "none";
-    el.list.style.display = open ? "grid" : "none";
-    songsToggle.classList.toggle("active", open);
-  });
-
-  const unhideBtn = document.createElement("button");
-  unhideBtn.type = "button";
-  unhideBtn.className = "outline-btn";
-  const unhideLabel = document.createElement("span");
-  unhideLabel.textContent = "Unhide all";
-  unhideBtn.append(unhideLabel);
-  unhideBtn.addEventListener("click", () => unhideAll());
 
   const skipToggle = document.createElement("button");
   skipToggle.type = "button";
@@ -2563,11 +2560,80 @@ async function boot() {
   gridZoom.append(gridZoomIcon, gDown, gUp);
   applyGridScale(localStorage.getItem(gKey) || 1);
 
-  songsRow.append(songsToggle, unhideBtn, skipToggle, playerZoom, gridZoom);
+  songsRow.append(songsToggle, skipToggle, playerZoom, gridZoom);
+
+  const songsTools = document.createElement("div");
+  songsTools.className = "songs-tools";
+
+  const unhideBtn = document.createElement("button");
+  unhideBtn.type = "button";
+  unhideBtn.className = "outline-btn";
+  unhideBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Unhide all</span>';
+  unhideBtn.addEventListener("click", () => unhideAll());
+
+  const reverseBtn = document.createElement("button");
+  reverseBtn.type = "button";
+  reverseBtn.className = "outline-btn";
+  const paintReverse = () => {
+    reverseBtn.classList.toggle("on", reverseOrder);
+    reverseBtn.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short"></i><span>Reverse</span>';
+  };
+  paintReverse();
+  reverseBtn.addEventListener("click", () => {
+    reverseOrder = !reverseOrder;
+    localStorage.setItem("sp_reverse", reverseOrder ? "1" : "0");
+    paintReverse();
+    renderTracks();
+    highlightTracks();
+    resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
+  });
+
+  const spacer = document.createElement("span");
+  spacer.className = "songs-tools-spacer";
+
+  const sKey = "sp_songs_scale";
+  const applyZoom = () => {
+    const v = Number(localStorage.getItem(sKey) || 1);
+    el.list.style.gridTemplateColumns = `repeat(auto-fill, minmax(${Math.round(160 * v)}px, 1fr))`;
+  };
+  const sDown = document.createElement("button");
+  sDown.type = "button";
+  sDown.textContent = "-";
+  const sUp = document.createElement("button");
+  sUp.type = "button";
+  sUp.textContent = "+";
+  sDown.addEventListener("click", () => {
+    localStorage.setItem(sKey, String(Math.max(0.6, Number(localStorage.getItem(sKey) || 1) - 0.1)));
+    applyZoom();
+  });
+  sUp.addEventListener("click", () => {
+    localStorage.setItem(sKey, String(Math.min(2, Number(localStorage.getItem(sKey) || 1) + 0.1)));
+    applyZoom();
+  });
+  const songsZoom = document.createElement("div");
+  songsZoom.className = "zoom-group";
+  songsZoom.append(sDown, sUp);
+  applyZoom();
+
+  songsTools.append(unhideBtn, reverseBtn, spacer, songsZoom);
+
+  const songsHeader = document.createElement("div");
+  songsHeader.className = "songs-header";
+  songsHeader.append(songsRow, songsTools);
+
+  el.list.style.display = "none";
+  songsTools.style.display = "none";
+  songsToggle.addEventListener("click", () => {
+    const open = el.list.style.display === "none";
+    el.list.style.display = open ? "grid" : "none";
+    songsTools.style.display = open ? "flex" : "none";
+    songsToggle.classList.toggle("active", open);
+  });
+
   const songsPanel = document.createElement("div");
   songsPanel.className = "songs-panel";
   el.list.parentElement.insertBefore(songsPanel, el.list);
-  songsPanel.appendChild(songsRow);
+  songsPanel.appendChild(songsHeader);
   songsPanel.appendChild(el.list);
 
   const toolbar = document.createElement("div");
@@ -2601,7 +2667,7 @@ async function boot() {
 
   const toolsBtn = document.createElement("button");
   toolsBtn.type = "button";
-  toolsBtn.innerHTML = '<i class="fa-solid fa-toolbox"></i><span>Tools</span>';
+  toolsBtn.innerHTML = '<i class="fa-solid fa-toolbox"></i><span> Tools</span>';
   toolsBtn.dataset.tool = "tools";
   const paintTools = () => toolsBtn.classList.toggle("active", !toolsCollapsed);
   paintTools();
@@ -2615,19 +2681,12 @@ async function boot() {
   renderToolsGrid();
   paintToolsBadge();
 
-  const hiddenBtn = document.createElement("button");
-  hiddenBtn.type = "button";
-  hiddenBtn.textContent = "Hidden";
-  toolbar.appendChild(hiddenBtn);
-  hiddenBtn.addEventListener("click", () => {
-    showHiddenGrid = !showHiddenGrid;
-    renderGrid();
-  });
+;
 
 
   const reloadBtn = document.createElement("button");
   reloadBtn.type = "button";
-  reloadBtn.innerHTML = '<i class="fa-solid fa-rotate"></i><span>Reload grid</span>';
+  reloadBtn.innerHTML = '<i class="fa-solid fa-rotate"></i><span> Reload grid</span>';
   reloadBtn.addEventListener("click", async () => {
     reloadBtn.disabled = true;
     try {
