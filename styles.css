@@ -1121,3 +1121,73 @@ body.auth-mode #auth-box {
   flex: 0 0 460px;
   max-width: calc(100vw - 48px);
 }
+
+.sources-bar,
+.target-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0 8px;
+}
+.sources-label,
+.target-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--muted);
+}
+.sources-hint {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: .65;
+}
+.sources-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 11px;
+}
+.sources-collapse:hover {
+  border-color: var(--action);
+  color: #ffffff;
+}
+.target-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
+}
+.target-toggle:hover {
+  border-color: var(--action);
+  color: var(--text);
+}
+.target-toggle.on {
+  background: var(--action);
+  border-color: transparent;
+  color: #ffffff;
+}
+.tool-tile.cascade-on {
+  background: var(--accent);
+  border-color: transparent;
+  color: #06120a;
+}
+.tool-tile.cascade-on i {
+  color: #06120a;
+}
