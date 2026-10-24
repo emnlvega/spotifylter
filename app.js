@@ -1071,10 +1071,12 @@ function showApp() {
   el.auth.classList.add("hidden");
   el.main.classList.remove("hidden");
   el.bar.classList.remove("hidden");
+  document.body.classList.remove("auth-mode");
 }
 
 function showAuth(message) {
   el.auth.classList.remove("hidden");
+  document.body.classList.add("auth-mode");
   el.main.classList.add("hidden");
   el.bar.classList.add("hidden");
   el.redirect.textContent = redirectUri();
@@ -1557,6 +1559,18 @@ async function unhideAll() {
   }
 }
 
+function signOut() {
+  localStorage.removeItem("sp_token");
+  localStorage.removeItem("sp_verifier");
+  localStorage.removeItem(ME_KEY);
+  localStorage.removeItem(PLAYLISTS_CACHE_KEY);
+  localStorage.removeItem(CACHE_KEY);
+  localStorage.removeItem(HIDDEN_KEY);
+  localStorage.removeItem(HIERARCHY_KEY);
+  localStorage.removeItem(HIERARCHY_ON_KEY);
+  location.reload();
+}
+
 function buildHeader() {
   if (document.getElementById("app-header")) return;
   const header = document.createElement("header");
@@ -1569,6 +1583,12 @@ function buildHeader() {
   h1.textContent = "Playlist Filter";
   wrap.append(h1, el.status);
   header.append(logo, wrap);
+  const out = document.createElement("button");
+  out.type = "button";
+  out.className = "header-signout";
+  out.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i><span>Sign out</span>';
+  out.addEventListener("click", signOut);
+  header.appendChild(out);
   el.main.insertBefore(header, el.main.firstChild);
   document.querySelectorAll("h1, h2, h3, header").forEach(node => {
     if (node.closest("#app-header")) return;
@@ -2039,10 +2059,73 @@ function paintToolsBadge() {
   }
 }
 
+function buildAuthBox() {
+  el.auth.innerHTML = "";
+  const logo = document.createElement("i");
+  logo.className = "fa-brands fa-spotify";
+  const h2 = document.createElement("h2");
+  h2.textContent = "Playlist Filter";
+  const sub = document.createElement("p");
+  sub.className = "auth-sub";
+  sub.textContent = "Connect your Spotify account to begin.";
+  const label = document.createElement("label");
+  label.textContent = "Client ID";
+  const clientInput = document.createElement("input");
+  clientInput.id = "client-id-input";
+  clientInput.type = "text";
+  clientInput.placeholder = "Paste your Spotify Client ID";
+  clientInput.autocomplete = "off";
+  const help = document.createElement("details");
+  help.className = "auth-help";
+  const summary = document.createElement("summary");
+  summary.textContent = "How do I get a Client ID?";
+  const steps = document.createElement("ol");
+  const li1 = document.createElement("li");
+  li1.innerHTML = 'Open <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> and log in with the same Spotify account you use here.';
+  const li2 = document.createElement("li");
+  li2.textContent = "Click Create app. Give it any name and description.";
+  const li3 = document.createElement("li");
+  li3.textContent = "In Redirect URIs, paste exactly the address shown below. Then select Web API and save.";
+  const li4 = document.createElement("li");
+  li4.textContent = "Open the app and copy its Client ID into the field above.";
+  steps.append(li1, li2, li3, li4);
+  help.append(summary, steps);
+  const redirectLabel = document.createElement("label");
+  redirectLabel.textContent = "Redirect URI (must be registered)";
+  const redirect = document.createElement("code");
+  redirect.id = "redirect-uri-display";
+  redirect.className = "auth-redirect";
+  const loginBtn = document.createElement("button");
+  loginBtn.id = "login-btn";
+  loginBtn.type = "button";
+  loginBtn.className = "auth-login";
+  loginBtn.innerHTML = '<i class="fa-brands fa-spotify"></i><span>Log in with Spotify</span>';
+  const tokenDetails = document.createElement("details");
+  tokenDetails.className = "auth-help";
+  const tokenSummary = document.createElement("summary");
+  tokenSummary.textContent = "Advanced: paste an access token";
+  const tokenInput = document.createElement("input");
+  tokenInput.id = "token-input";
+  tokenInput.type = "password";
+  tokenInput.placeholder = "Access token or JSON";
+  const tokenBtn = document.createElement("button");
+  tokenBtn.id = "token-btn";
+  tokenBtn.type = "button";
+  tokenBtn.textContent = "Use token";
+  tokenDetails.append(tokenSummary, tokenInput, tokenBtn);
+  el.auth.append(logo, h2, sub, label, clientInput, help, redirectLabel, redirect, loginBtn, tokenDetails);
+  el.clientId = clientInput;
+  el.redirect = redirect;
+  el.login = loginBtn;
+  el.token = tokenInput;
+  el.tokenBtn = tokenBtn;
+}
+
 async function boot() {
   renderGrid();
   buildPlayer();
   buildHeader();
+  buildAuthBox();
   el.redirect.textContent = redirectUri();
   el.clientId.value = getClientId();
   if (!document.getElementById("fa-css")) {
