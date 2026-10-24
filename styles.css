@@ -1309,3 +1309,38 @@ body.auth-mode #auth-box {
   flex: 1;
   min-width: 0;
 }
+
+.api-counter {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+#app-header .header-signout {
+  margin-left: 10px;
+}
+.api-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(6, 18, 10, .15);
+  color: #06120a;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+  cursor: default;
+}
+.api-pill.warn { background: #facc15; color: #1a1a1a; }
+.api-pill.danger { background: #dc2626; color: #ffffff; }
+.api-pill.hold {
+  background: #7f1d1d;
+  color: #fee2e2;
+  animation: api-pulse 1.2s ease-in-out infinite;
+}
+@keyframes api-pulse {
+  50% { opacity: .55; }
+}
+@media (max-width: 720px) {
+  .api-pill { font-size: 10px; padding: 4px 8px; }
+}

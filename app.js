@@ -3,6 +3,7 @@ const ACCESS_TOKEN = "ERROR";
 const SYNC_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hidden";
 const HIERARCHY_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hierarchy";
 const OPS_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/ops";
+const HOLD_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hold";
 const OPS_CURSOR_KEY = "sp_ops_cursor";
 const SCOPES = [
   "streaming",
@@ -76,6 +77,9 @@ const SOURCE_KEY = "sp_source";
 const PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="#2a3140"/></svg>'
 );
+const API_LOG_KEY = "sp_api_log";
+const API_HOLD_KEY = "sp_api_hold";
+const API_BUDGET_15M = 40;
 
 let cache = {};
 let player = null;
@@ -95,6 +99,7 @@ let toolsCollapsed = localStorage.getItem("sp_tools_collapsed") !== "0";
 let playAll = localStorage.getItem("sp_play_all") === "1";
 let reverseOrder = localStorage.getItem("sp_reverse") === "1";
 let paintTargetBar = () => {};
+let paintApiCounter = () => {};
 
 function currentPlayingUri() {
   if (pendingTrackUri) return pendingTrackUri;
@@ -491,7 +496,11 @@ function initPlayer(onState) {
         getOAuthToken: async cb => cb(await getToken()),
         volume: 0.8
       });
-            player.addListener("ready", ({ device_id }) => {
+      player.addListener("playback_error", ({ message }) => {
+        if (message && message.includes("M_ID")) return;
+        setFeedback("player " + message, true);
+      });
+      player.addListener("ready", ({ device_id }) => {
         deviceId = device_id;
         resolve(device_id);
       });
@@ -1362,6 +1371,9 @@ async function startSession(token) {
   } catch (err) {
     setFeedback(err.message, true);
   }
+  try {
+    await syncHold(token);
+  } catch (_) { /* best effort */ }
   renderGrid();
   renderSourceGrid();
   renderTracks();
@@ -1944,6 +1956,7 @@ function buildHeader() {
   out.className = "header-signout";
   out.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i><span>Sign out</span>';
   out.addEventListener("click", signOut);
+  header.appendChild(buildApiCounter());
   header.appendChild(out);
   el.main.insertBefore(header, el.main.firstChild);
   document.querySelectorAll("h1, h2, h3, header").forEach(node => {
@@ -1972,6 +1985,9 @@ async function reloadGridPlaylists() {
 }
 
 async function reconcileDevice() {
+  const last = Number(localStorage.getItem("sp_last_reconcile") || 0);
+  if (Date.now() - last < 120000) return;
+  localStorage.setItem("sp_last_reconcile", String(Date.now()));
   const token = await getToken();
   const api = await fetchPlaybackState(token);
   if (!api) return;
@@ -2503,7 +2519,109 @@ function buildAuthBox() {
   el.tokenBtn = tokenBtn;
 }
 
+function apiLog() {
+  const raw = localStorage.getItem(API_LOG_KEY);
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch (_) { return []; }
+}
+
+function apiStats() {
+  const now = Date.now();
+  const log = apiLog().filter(t => t > now - 3 * 60 * 60 * 1000);
+  return {
+    m15: log.filter(t => t > now - 15 * 60 * 1000).length,
+    h1: log.filter(t => t > now - 60 * 60 * 1000).length,
+    h3: log.length
+  };
+}
+
+function apiLogPush() {
+  const now = Date.now();
+  const log = apiLog().filter(t => t > now - 3 * 60 * 60 * 1000);
+  log.push(now);
+  localStorage.setItem(API_LOG_KEY, JSON.stringify(log));
+  paintApiCounter();
+}
+
+function apiHoldUntil() {
+  return Number(localStorage.getItem(API_HOLD_KEY) || 0);
+}
+
+function apiHoldSet(seconds) {
+  const until = Date.now() + seconds * 1000;
+  localStorage.setItem(API_HOLD_KEY, String(until));
+  paintApiCounter();
+  getToken()
+    .then(token => fetch(HOLD_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessToken: token, holdUntil: until })
+    }))
+    .catch(() => {});
+}
+
+async function syncHold(token) {
+  const res = await fetch(HOLD_URL + "?accessToken=" + encodeURIComponent(token));
+  if (!res.ok) return;
+  const data = await res.json();
+  if (data.error) return;
+  const remote = Number(data.holdUntil) || 0;
+  const local = apiHoldUntil();
+  if (remote > local) {
+    localStorage.setItem(API_HOLD_KEY, String(remote));
+    paintApiCounter();
+  } else if (local > remote) {
+    fetch(HOLD_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessToken: token, holdUntil: local })
+    }).catch(() => {});
+  }
+}
+
+function installApiCounter() {
+  const original = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : (input && input.url) || "";
+    const counted = url.indexOf("https://api.spotify.com/") === 0;
+    if (counted) apiLogPush();
+    const res = await original(input, init);
+    if (counted && res.status === 429) {
+      const ra = Number(res.headers.get("Retry-After"));
+      if (Number.isFinite(ra) && ra > 0) apiHoldSet(ra);
+    }
+    return res;
+  };
+}
+
+function buildApiCounter() {
+  const wrap = document.createElement("div");
+  wrap.className = "api-counter";
+  const pill = document.createElement("span");
+  pill.className = "api-pill";
+  wrap.appendChild(pill);
+  const paint = () => {
+    const hold = apiHoldUntil() - Date.now();
+    if (hold > 0) {
+      pill.textContent = "HOLD " + Math.ceil(hold / 60000) + "m";
+      pill.className = "api-pill hold";
+      pill.title = "Spotify quota hold active. Another request can extend it.";
+      return;
+    }
+    const s = apiStats();
+    const pct = s.m15 / API_BUDGET_15M;
+    pill.textContent = s.m15 + " / " + API_BUDGET_15M;
+    pill.className = "api-pill" + (pct >= 0.8 ? " danger" : pct >= 0.5 ? " warn" : "");
+    pill.title = "15m: " + s.m15 + " · 1h: " + s.h1 + " · 3h: " + s.h3;
+  };
+  paint();
+  paintApiCounter = paint;
+  setInterval(paint, 5000);
+  return wrap;
+}
+
 async function boot() {
+  installApiCounter();
   renderGrid();
   buildPlayer();
   buildHeader();
@@ -2746,9 +2864,9 @@ async function boot() {
     const duration = currentTrack.durationMs || (lastState && lastState.duration) || 1;
     await player.seek(Math.floor(fraction * duration));
   });
-    try {
+  try {
     readCache();
-        document.addEventListener("visibilitychange", async () => {
+    document.addEventListener("visibilitychange", async () => {
       if (document.visibilityState !== "visible") return;
       try {
         await reconcileDevice();
