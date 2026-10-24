@@ -682,15 +682,25 @@ function applyOp(op) {
   if (!op || !op.playlistId) return false;
   const name = playlistNameById(op.playlistId);
   if (!name) return false;
-  const entry = cache[name];
-  if (!entry || !entry.tracks) return false;
   const opTime = Date.parse(op.createdAt);
   if (!Number.isFinite(opTime)) return false;
-  if (entry.loadedAt && opTime <= entry.loadedAt) return false;
+  let entry = cache[name];
+  if (!entry) {
+    entry = {
+      id: op.playlistId,
+      label: name,
+      image: PLAYLISTS[name] ? PLAYLISTS[name].image || null : null,
+      loadedAt: 0,
+      tracks: [],
+      partial: true
+    };
+    cache[name] = entry;
+  }
+  if (!entry.tracks) entry.tracks = [];
+  if (entry.loadedAt && opTime <= entry.loadedAt) return true;
   if (op.action === "remove") {
-    const before = entry.tracks.length;
     entry.tracks = entry.tracks.filter(t => t.uri !== op.trackUri);
-    return entry.tracks.length !== before;
+    return true;
   }
   if (op.action === "add") {
     let track = null;
@@ -698,11 +708,8 @@ function applyOp(op) {
       try { track = JSON.parse(op.trackJson); } catch (_) { track = null; }
     }
     if (!track) track = lookupTrack(op.trackUri);
-    if (!track) {
-      track = { uri: op.trackUri, name: op.trackUri, artists: "", durationMs: 0, image: null };
-    }
-    if (entry.tracks.some(t => sameRecording(t, track))) return false;
-    entry.tracks.push(track);
+    if (!track) track = { uri: op.trackUri, name: op.trackUri, artists: "", durationMs: 0, image: null };
+    if (!entry.tracks.some(t => sameRecording(t, track))) entry.tracks.push(track);
     return true;
   }
   return false;
@@ -717,6 +724,8 @@ async function syncOps(token) {
   const items = data.items || [];
   if (!items.length) return 0;
   let applied = 0;
+  let handled = 0;
+  let changed = false;
   let newest = since;
   const seen = new Set();
   for (const op of items) {
@@ -724,25 +733,23 @@ async function syncOps(token) {
       if (seen.has(op.opId)) continue;
       seen.add(op.opId);
     }
-    const ok = applyOp(op);
-    if (ok) {
-      applied++;
+    const before = JSON.stringify(cache[playlistNameById(op.playlistId)]?.tracks?.length);
+    if (applyOp(op)) {
+      handled++;
+      const after = JSON.stringify(cache[playlistNameById(op.playlistId)]?.tracks?.length);
+      if (before !== after) changed = true;
       if (op.createdAt && op.createdAt > newest) newest = op.createdAt;
     }
   }
-  if (items.length && !applied) {
-    console.warn("ops pulled but none applied", items.length);
-    return 0;
-  }
-  localStorage.setItem(OPS_CURSOR_KEY, newest);
-  if (applied) {
+  if (handled) localStorage.setItem(OPS_CURSOR_KEY, newest);
+  if (changed) {
     writeCache();
     renderTracks();
     renderGrid();
     highlightTracks();
     markGridHasTrack();
   }
-  return applied;
+  return handled;
 }
 
 async function addTrack(track, selectedName, token) {
