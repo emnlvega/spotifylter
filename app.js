@@ -2,6 +2,8 @@ const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
 const SYNC_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hidden";
 const HIERARCHY_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hierarchy";
+const OPS_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/ops";
+const OPS_CURSOR_KEY = "sp_ops_cursor";
 const SCOPES = [
   "streaming",
   "user-read-email",
@@ -622,10 +624,10 @@ async function playFromGesture(track, token, positionMs) {
 }
 
 async function saveToLibrary(track, token, attempt = 1) {
-  const res = await fetch("https://api.spotify.com/v1/me/library", {
+  const params = new URLSearchParams({ uris: track.uri });
+  const res = await fetch("https://api.spotify.com/v1/me/library?" + params.toString(), {
     method: "PUT",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify({ uris: [track.uri] })
+    headers: { Authorization: "Bearer " + token }
   });
   if (!res.ok) {
     if (attempt < 2 && (res.status >= 500 || res.status === 429)) {
@@ -634,6 +636,98 @@ async function saveToLibrary(track, token, attempt = 1) {
     }
     throw new Error("ERROR library " + res.status);
   }
+}
+
+function genOpId() {
+  return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+function playlistNameById(id) {
+  for (const name of Object.keys(PLAYLISTS)) {
+    if (PLAYLISTS[name].id === id) return name;
+  }
+  return null;
+}
+
+async function pushOp(op) {
+  const token = await getToken();
+  if (!token) return;
+  const payload = {
+    accessToken: token,
+    op: {
+      opId: genOpId(),
+      playlistId: op.playlistId,
+      trackUri: op.trackUri,
+      action: op.action,
+      trackJson: op.track ? JSON.stringify(op.track) : "",
+      createdAt: new Date().toISOString()
+    }
+  };
+  await fetch(OPS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+function applyOp(op) {
+  if (!op || !op.playlistId) return false;
+  const name = playlistNameById(op.playlistId);
+  if (!name) return false;
+  const entry = cache[name];
+  if (!entry || !entry.tracks) return false;
+  const opTime = Date.parse(op.createdAt);
+  if (!Number.isFinite(opTime)) return false;
+  if (entry.loadedAt && opTime <= entry.loadedAt) return false;
+  if (op.action === "remove") {
+    const before = entry.tracks.length;
+    entry.tracks = entry.tracks.filter(t => t.uri !== op.trackUri);
+    return entry.tracks.length !== before;
+  }
+  if (op.action === "add") {
+    let track = null;
+    if (op.trackJson) {
+      try { track = JSON.parse(op.trackJson); } catch (_) { track = null; }
+    }
+    if (!track) track = lookupTrack(op.trackUri);
+    if (!track) {
+      track = { uri: op.trackUri, name: op.trackUri, artists: "", durationMs: 0, image: null };
+    }
+    if (entry.tracks.some(t => sameRecording(t, track))) return false;
+    entry.tracks.push(track);
+    return true;
+  }
+  return false;
+}
+
+async function syncOps(token) {
+  const since = localStorage.getItem(OPS_CURSOR_KEY) || new Date(0).toISOString();
+  const res = await fetch(OPS_URL + "?accessToken=" + encodeURIComponent(token) + "&since=" + encodeURIComponent(since));
+  if (!res.ok) throw new Error("ERROR ops pull " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error("ERROR ops pull " + data.error);
+  const items = data.items || [];
+  if (!items.length) return 0;
+  let applied = 0;
+  let newest = since;
+  const seen = new Set();
+  for (const op of items) {
+    if (op.opId) {
+      if (seen.has(op.opId)) continue;
+      seen.add(op.opId);
+    }
+    if (op.createdAt && op.createdAt > newest) newest = op.createdAt;
+    if (applyOp(op)) applied++;
+  }
+  localStorage.setItem(OPS_CURSOR_KEY, newest);
+  if (applied) {
+    writeCache();
+    renderTracks();
+    renderGrid();
+    highlightTracks();
+    markGridHasTrack();
+  }
+  return applied;
 }
 
 async function addTrack(track, selectedName, token) {
@@ -655,9 +749,15 @@ async function addTrack(track, selectedName, token) {
       partial: true
     };
   }
-  if (!cache[selectedName].tracks) cache[selectedName].tracks = [];
+    if (!cache[selectedName].tracks) cache[selectedName].tracks = [];
   cache[selectedName].tracks.push(track);
   writeCache();
+  pushOp({
+    playlistId: PLAYLISTS[selectedName].id,
+    trackUri: track.uri,
+    action: "add",
+    track
+  }).catch(() => {});
   return 1;
 }
 
@@ -946,10 +1046,15 @@ async function removeTrack(track, name, token) {
     body: JSON.stringify({ items: [{ uri }] })
   });
   if (!res.ok && res.status !== 200) throw new Error("ERROR remove " + name + " " + res.status);
-  if (entry && entry.tracks) {
+    if (entry && entry.tracks) {
     entry.tracks = entry.tracks.filter(t => !sameRecording(t, track));
     writeCache();
   }
+  pushOp({
+    playlistId: id,
+    trackUri: uri,
+    action: "remove"
+  }).catch(() => {});
 }
 
 function hierarchyMap() {
@@ -1213,6 +1318,11 @@ async function startSession(token) {
   }
   try {
     await syncHierarchyPull(token);
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+  try {
+    await syncOps(token);
   } catch (err) {
     setFeedback(err.message, true);
   }
@@ -1710,6 +1820,7 @@ async function unhideAll() {
 function signOut() {
   localStorage.removeItem("sp_token");
   localStorage.removeItem("sp_verifier");
+    localStorage.removeItem(OPS_CURSOR_KEY);
   localStorage.removeItem(ME_KEY);
   localStorage.removeItem(PLAYLISTS_CACHE_KEY);
   localStorage.removeItem(CACHE_KEY);
