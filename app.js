@@ -724,8 +724,15 @@ async function syncOps(token) {
       if (seen.has(op.opId)) continue;
       seen.add(op.opId);
     }
-    if (op.createdAt && op.createdAt > newest) newest = op.createdAt;
-    if (applyOp(op)) applied++;
+    const ok = applyOp(op);
+    if (ok) {
+      applied++;
+      if (op.createdAt && op.createdAt > newest) newest = op.createdAt;
+    }
+  }
+  if (items.length && !applied) {
+    console.warn("ops pulled but none applied", items.length);
+    return 0;
   }
   localStorage.setItem(OPS_CURSOR_KEY, newest);
   if (applied) {
