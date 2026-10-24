@@ -668,11 +668,14 @@ async function pushOp(op) {
       createdAt: new Date().toISOString()
     }
   };
-  await fetch(OPS_URL, {
+  const res = await fetch(OPS_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
+  if (!res.ok) throw new Error("ERROR ops push " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error("ERROR ops push " + data.error);
 }
 
 function applyOp(op) {
@@ -762,7 +765,7 @@ async function addTrack(track, selectedName, token) {
     trackUri: track.uri,
     action: "add",
     track
-  }).catch(() => {});
+  }).catch(err => setFeedback(err.message, true));
   return 1;
 }
 
@@ -1061,7 +1064,7 @@ async function removeTrack(track, name, token) {
     playlistId: id,
     trackUri: uri,
     action: "remove"
-  }).catch(() => {});
+  }).catch(err => setFeedback(err.message, true));
 }
 
 function hierarchyMap() {
