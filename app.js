@@ -25,6 +25,8 @@ const ME_TTL = 60 * 60 * 1000;
 const PLAYLISTS_CACHE_KEY = "sp_playlists_v1";
 const PLAYLISTS_TTL = 60 * 60 * 1000;
 
+const LOGO_SVG = '<svg viewBox="0 0 3994 1883" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1,0,0,1,-100.338058,-100.340635)"><g transform="matrix(4.166667,0,0,4.166667,0,0)"><path d="M202.186,109.034L150.19,109.034C149.678,109.034 149.172,108.991 148.675,108.907L148.675,119.385C148.675,135.561 135.561,148.675 119.385,148.675L109.034,148.675L109.034,185.994L445.465,185.994C460.482,185.994 472.498,197.219 472.498,210.855L472.498,289.145C472.498,302.781 460.482,314.006 445.465,314.006L432.857,314.006L432.857,351.325L443.208,351.325C459.385,351.325 472.498,364.438 472.498,380.615L472.498,443.207C472.498,459.384 459.385,472.498 443.208,472.498L380.615,472.498C364.439,472.498 351.325,459.384 351.325,443.207L351.325,432.488C350.494,432.73 349.637,432.856 348.76,432.856L301.234,432.856L301.234,451.057C301.234,464.693 289.218,475.918 274.201,475.918L54.535,475.918C39.518,475.918 27.502,464.693 27.502,451.057L27.502,372.767C27.502,359.131 39.518,347.905 54.535,347.905L274.201,347.905C289.218,347.905 301.234,359.131 301.234,372.767L301.234,390.966L348.76,390.966C349.637,390.966 350.494,391.092 351.325,391.334L351.325,380.615C351.325,364.438 364.439,351.325 380.615,351.325L390.967,351.325L390.967,314.006L51.115,314.006C36.097,314.006 24.081,302.781 24.081,289.145L24.081,210.855C24.081,197.219 36.097,185.994 51.115,185.994L67.143,185.994L67.143,148.675L56.792,148.675C40.615,148.675 27.502,135.561 27.502,119.385L27.502,56.792C27.502,40.616 40.615,27.502 56.792,27.502L119.385,27.502C135.561,27.502 148.675,40.616 148.675,56.792L148.675,67.27C149.172,67.186 149.678,67.143 150.19,67.143L202.186,67.143L202.186,48.943C202.186,35.307 214.202,24.082 229.22,24.082L448.885,24.082C463.903,24.082 475.919,35.307 475.919,48.943L475.919,127.233C475.919,140.869 463.903,152.095 448.885,152.095L229.22,152.095C214.202,152.095 202.186,140.869 202.186,127.233L202.186,109.034ZM119.385,52.647L56.792,52.647C54.503,52.647 52.647,54.503 52.647,56.792L52.647,119.385C52.647,121.674 54.503,123.53 56.792,123.53L119.385,123.53C121.674,123.53 123.529,121.674 123.529,119.385L123.529,56.792C123.529,54.503 121.674,52.647 119.385,52.647ZM443.208,376.47L380.615,376.47C378.326,376.47 376.471,378.326 376.471,380.615L376.471,443.207C376.471,445.497 378.326,447.352 380.615,447.352L443.208,447.352C445.497,447.352 447.353,445.497 447.353,443.207L447.353,380.615C447.353,378.326 445.497,376.47 443.208,376.47Z" fill="currentColor"/></g><g transform="matrix(1,0,0,1,-166.90289,0)"><path d="M2542.786,774.973L2542.786,633.728L2490.253,633.728C2427.681,633.728 2377.614,586.954 2377.614,530.137L2377.614,203.931C2377.614,147.114 2427.681,100.341 2490.253,100.341L4147.632,100.341C4210.204,100.341 4260.271,147.114 4260.271,203.931L4260.271,530.137C4260.271,586.954 4210.204,633.728 4147.632,633.728L2717.331,633.728L2717.331,774.973L3405.527,774.973C3468.099,774.973 3518.166,821.746 3518.166,878.564L3518.166,1204.77C3518.166,1261.587 3468.099,1308.36 3405.527,1308.36L2717.331,1308.36L2717.331,1455.923C2717.331,1458.595 2717.22,1461.239 2717.002,1463.852L2760.46,1463.852C2827.862,1463.852 2882.502,1518.491 2882.502,1585.894L2882.502,1846.698C2882.502,1914.1 2827.862,1968.741 2760.46,1968.741L2499.655,1968.741C2432.254,1968.741 2377.614,1914.1 2377.614,1846.698L2377.614,1585.894C2377.614,1518.491 2432.254,1463.852 2499.655,1463.852L2543.115,1463.852C2542.897,1461.239 2542.786,1458.595 2542.786,1455.923L2542.786,1308.36L2490.253,1308.36C2427.681,1308.36 2377.614,1261.587 2377.614,1204.77L2377.614,878.564C2377.614,821.746 2427.681,774.973 2490.253,774.973L2542.786,774.973ZM2760.46,1568.624L2499.655,1568.624C2490.118,1568.624 2482.387,1576.357 2482.387,1585.894L2482.387,1846.698C2482.387,1856.236 2490.118,1863.968 2499.655,1863.968L2760.46,1863.968C2769.998,1863.968 2777.73,1856.236 2777.73,1846.698L2777.73,1585.894C2777.73,1576.357 2769.998,1568.624 2760.46,1568.624Z" fill="currentColor"/></g></g></svg>';
+
 const TOOLS = [
   { id: "manual",    icon: "fa-paste",        label: "Manual",    desc: "Paste track links" },
   { id: "combine",   icon: "fa-circle-plus",  label: "Combine",   desc: "Union, no duplicates" },
@@ -98,6 +100,18 @@ let sourcesCollapsed = localStorage.getItem("sp_sources_collapsed") === "1";
 let toolsCollapsed = localStorage.getItem("sp_tools_collapsed") !== "0";
 let playAll = localStorage.getItem("sp_play_all") === "1";
 let reverseOrder = localStorage.getItem("sp_reverse") === "1";
+let songFilter = "";
+let songSort = "default";
+let songHiddenFilter = "all";
+let filterQueue = localStorage.getItem("sp_filter_queue") === "1";
+let recentPanel = null;
+let movingTile = null;
+let dragCandidate = null;
+let dragStartX = 0;
+let dragStartY = 0;
+let dragPointerId = null;
+let justFinishedDrag = false;
+let reorderMode = false;
 let paintTargetBar = () => {};
 let paintApiCounter = () => {};
 
@@ -494,7 +508,7 @@ function initPlayer(onState) {
       player = new Spotify.Player({
         name: "spotifylter",
         getOAuthToken: async cb => cb(await getToken()),
-        volume: 0.8
+        volume: Number(localStorage.getItem("sp_volume") || 0.8)
       });
       player.addListener("playback_error", ({ message }) => {
         if (message && message.includes("M_ID")) return;
@@ -591,6 +605,7 @@ async function playFromGesture(track, token, positionMs) {
   pendingTrackUriAt = Date.now();
   try {
     await playTrack(track.uri, token, positionMs);
+    pushRecent(track);
   } catch (err) {
     pendingTrackUri = null;
     pendingTrackUriAt = 0;
@@ -931,6 +946,40 @@ function renderSourceSelect() {
 
 function displayTracks(name) {
   const all = (cache[name] && cache[name].tracks) || [];
+  let list = all;
+  if (songHiddenFilter !== "all") {
+    list = list.filter(t => {
+      const h = isHidden(name, t.uri);
+      return songHiddenFilter === "hidden" ? h : !h;
+    });
+  }
+  if (songFilter) {
+    const q = songFilter.toLowerCase();
+    list = list.filter(t => t.name.toLowerCase().includes(q) || t.artists.toLowerCase().includes(q));
+  }
+  if (songSort !== "default") {
+    list = [...list];
+    if (songSort === "name") list.sort((a, b) => a.name.localeCompare(b.name));
+    else if (songSort === "artist") list.sort((a, b) => a.artists.localeCompare(b.artists));
+    else if (songSort === "durationAsc") list.sort((a, b) => a.durationMs - b.durationMs);
+    else if (songSort === "durationDesc") list.sort((a, b) => b.durationMs - a.durationMs);
+  }
+  return reverseOrder ? [...list].reverse() : list;
+}
+
+function paintSongsProgress(name) {
+  const all = (cache[name] && cache[name].tracks) || [];
+  let hidden = 0;
+  for (const t of all) if (isHidden(name, t.uri)) hidden++;
+  const total = all.length;
+  const pct = total ? Math.round((hidden / total) * 100) : 0;
+  const node = document.getElementById("songs-progress");
+  if (node) node.textContent = hidden + " hidden · " + total + " total · " + pct + "%";
+}
+
+function queueTracks(name) {
+  if (filterQueue) return displayTracks(name);
+  const all = (cache[name] && cache[name].tracks) || [];
   return reverseOrder ? [...all].reverse() : all;
 }
 
@@ -980,7 +1029,7 @@ function renderTracks() {
     });
     el.list.appendChild(card);
   }
-  paintVersionsButton();
+  paintSongsProgress(name);
 }
 
 function highlightTracks() {
@@ -1034,11 +1083,92 @@ function markGridHasTrack() {
   }
 }
 
+function gridOrder() {
+  const current = Object.keys(PLAYLISTS).filter(n => !PLAYLISTS[n].extra);
+  const raw = localStorage.getItem("sp_grid_order");
+  if (!raw) return current;
+  try {
+    const stored = JSON.parse(raw);
+    const inStored = stored.filter(n => current.includes(n));
+    const newOnes = current.filter(n => !inStored.includes(n));
+    return [...inStored, ...newOnes];
+  } catch (_) {
+    return current;
+  }
+}
+
+function moveInGridOrder(name, dir) {
+  const order = gridOrder();
+  const idx = order.indexOf(name);
+  if (idx === -1) return;
+  const target = idx + dir;
+  if (target < 0 || target >= order.length) return;
+  [order[idx], order[target]] = [order[target], order[idx]];
+  localStorage.setItem("sp_grid_order", JSON.stringify(order));
+  renderGrid();
+}
+
+function saveGridOrder(order) {
+  localStorage.setItem("sp_grid_order", JSON.stringify(order));
+}
+
+function onDragMove(ev) {
+  if (!movingTile) return;
+  const moving = el.grid.querySelector('button[data-name="' + CSS.escape(movingTile) + '"]');
+  if (!moving) return;
+  const under = document.elementFromPoint(ev.clientX, ev.clientY);
+  const target = under && under.closest("#target-grid button");
+  if (!target || target === moving) return;
+  const rect = target.getBoundingClientRect();
+  const isLeftHalf = ev.clientX < rect.left + rect.width / 2;
+  if (isLeftHalf) {
+    if (target.previousElementSibling === moving) return;
+    el.grid.insertBefore(moving, target);
+  } else {
+    if (target.nextElementSibling === moving) return;
+    el.grid.insertBefore(moving, target.nextSibling);
+  }
+}
+
+function onPointerMove(ev) {
+  if (movingTile) { onDragMove(ev); return; }
+  if (!dragCandidate) return;
+  const dx = ev.clientX - dragStartX;
+  const dy = ev.clientY - dragStartY;
+  if (Math.hypot(dx, dy) < 10) return;
+  movingTile = dragCandidate;
+  dragCandidate = null;
+  const moving = el.grid.querySelector('button[data-name="' + CSS.escape(movingTile) + '"]');
+  if (moving) moving.classList.add("moving");
+  el.grid.classList.add("has-moving");
+  onDragMove(ev);
+}
+
+function onPointerUp() {
+  document.body.removeEventListener("pointermove", onPointerMove);
+  document.body.removeEventListener("pointerup", onPointerUp);
+  document.body.removeEventListener("pointercancel", onPointerUp);
+  if (movingTile) {
+    const moving = el.grid.querySelector('button[data-name="' + CSS.escape(movingTile) + '"]');
+    if (moving) moving.classList.remove("moving");
+    el.grid.classList.remove("has-moving");
+    const visible = [...el.grid.querySelectorAll("button[data-name]")].map(b => b.dataset.name);
+    const previous = gridOrder();
+    const hiddenOnes = previous.filter(n => !visible.includes(n));
+    saveGridOrder([...visible, ...hiddenOnes]);
+    justFinishedDrag = true;
+    setTimeout(() => { justFinishedDrag = false; }, 150);
+  }
+  movingTile = null;
+  dragCandidate = null;
+  dragPointerId = null;
+}
+
 function renderGrid() {
   el.grid.innerHTML = "";
   const hidden = hiddenGrid();
   const cur = currentTrack && currentTrack.uri;
-  for (const name of Object.keys(PLAYLISTS)) {
+  for (const name of gridOrder()) {
     const entry = PLAYLISTS[name];
     if (entry.extra) continue;
     const isHidden = hidden.includes(name);
@@ -1082,10 +1212,36 @@ function renderGrid() {
     });
     btn.append(img, label, badge, sync);
     const has = cur && cache[name] && cache[name].tracks && cache[name].tracks.some(t => sameRecording(t, currentTrack));
-    if (has) btn.classList.add("has-track");
-    btn.addEventListener("click", () => onAdd(name, btn));
-    el.grid.appendChild(btn);
+if (has) btn.classList.add("has-track");
+
+if (reorderMode) {
+  btn.classList.add("reordering");
+  const up = document.createElement("span");
+  up.className = "reorder-arrow reorder-up";
+  up.innerHTML = '<i class="fa-solid fa-chevron-up"></i>';
+  up.addEventListener("click", ev => {
+    ev.stopPropagation();
+    moveInGridOrder(name, -1);
+  });
+  const down = document.createElement("span");
+  down.className = "reorder-arrow reorder-down";
+  down.innerHTML = '<i class="fa-solid fa-chevron-down"></i>';
+  down.addEventListener("click", ev => {
+    ev.stopPropagation();
+    moveInGridOrder(name, 1);
+  });
+  btn.append(up, down);
+}
+
+btn.addEventListener("click", () => {
+  if (reorderMode) return;
+  onAdd(name, btn);
+});
+
+el.grid.appendChild(btn);
+
   }
+  el.grid.classList.toggle("has-moving", Boolean(movingTile));
   paintTargetBar();
 }
 
@@ -1420,6 +1576,82 @@ function openVersionsPanel() {
   center.appendChild(panel);
 }
 
+function recentList() {
+  const raw = localStorage.getItem("sp_recent");
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch (_) { return []; }
+}
+
+function pushRecent(track) {
+  if (!track || !track.uri) return;
+  const list = recentList().filter(t => t.uri !== track.uri);
+  list.unshift({
+    uri: track.uri,
+    name: track.name,
+    artists: track.artists,
+    image: track.image,
+    durationMs: track.durationMs
+  });
+  localStorage.setItem("sp_recent", JSON.stringify(list.slice(0, 12)));
+  paintRecentGrid();
+}
+
+function paintRecentGrid() {
+  if (!recentPanel) return;
+  recentPanel.innerHTML = "";
+  const list = recentList();
+  if (!list.length) {
+    const empty = document.createElement("p");
+    empty.className = "recent-empty";
+    empty.textContent = "No recent songs";
+    recentPanel.appendChild(empty);
+    return;
+  }
+  for (const t of list) {
+    const card = document.createElement("div");
+    card.className = "track";
+    const img = document.createElement("img");
+    img.alt = "";
+    bindImg(img, t.image);
+    const meta = document.createElement("div");
+    meta.innerHTML = `<p class="track-name"></p><p class="track-artists"></p>`;
+    meta.querySelector(".track-name").textContent = t.name;
+    meta.querySelector(".track-artists").textContent = t.artists;
+    card.append(img, meta);
+    card.addEventListener("click", async () => {
+      try {
+        const token = await getToken();
+        currentTrack = t;
+        await playFromGesture(t, token);
+        updatePlayerBar(t);
+        highlightTracks();
+        markGridHasTrack();
+        paintVersionsButton();
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
+    });
+    recentPanel.appendChild(card);
+  }
+}
+
+function toggleRecentPanel() {
+  const btn = document.getElementById("np-recent-btn");
+  if (recentPanel) {
+    recentPanel.remove();
+    recentPanel = null;
+    if (btn) btn.classList.remove("active");
+    return;
+  }
+  const view = document.getElementById("player-view");
+  if (!view) return;
+  recentPanel = document.createElement("div");
+  recentPanel.id = "recently-grid";
+  view.appendChild(recentPanel);
+  paintRecentGrid();
+  if (btn) btn.classList.add("active");
+}
+
 function findCachedTrack(uri) {
   for (const name of Object.keys(cache)) {
     const hit = cache[name].tracks.find(t => t.uri === uri);
@@ -1738,7 +1970,7 @@ function isUnplayable(err) {
 async function playAdjacent(dir, hide) {
   if (shuffleOn && dir === 1) return playNextShuffled(hide);
   const name = sourceName();
-  const tracks = displayTracks(name);
+  const tracks = queueTracks(name);
   if (!tracks.length || !currentTrack) return;
   const original = currentTrack;
   if (dir === 1 && hide !== false && !playAll) setHidden(name, original.uri, true);
@@ -1877,6 +2109,13 @@ function buildPlayer() {
     paintPlayAll();
     renderTracks();
   });
+  const recentBtn = document.createElement("button");
+  recentBtn.type = "button";
+  recentBtn.id = "np-recent-btn";
+  recentBtn.className = "np-shuffle";
+  recentBtn.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i>';
+  recentBtn.title = "Recently played";
+  recentBtn.addEventListener("click", toggleRecentPanel);
   center.appendChild(controls);
   const seeks = document.createElement("div");
   seeks.className = "np-seeks";
@@ -1918,8 +2157,25 @@ function buildPlayer() {
     if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
     paintRnd();
   });
-    controls.append(prev, toggle, rnd, playAllBtn, next);
+  controls.append(prev, toggle, rnd, playAllBtn, recentBtn, next);
   center.appendChild(seeks);
+  const volume = document.createElement("div");
+  volume.className = "np-volume";
+  const vIcon = document.createElement("i");
+  vIcon.className = "fa-solid fa-volume-high";
+  const vRange = document.createElement("input");
+  vRange.type = "range";
+  vRange.min = "0";
+  vRange.max = "1";
+  vRange.step = "0.05";
+  vRange.value = localStorage.getItem("sp_volume") || "0.8";
+  vRange.addEventListener("input", () => {
+    const v = Number(vRange.value);
+    localStorage.setItem("sp_volume", String(v));
+    if (player) player.setVolume(v);
+  });
+  volume.append(vIcon, vRange);
+  center.appendChild(volume);
   card.appendChild(center);
   view.appendChild(card);
   const gridParent = el.grid && el.grid.parentElement;
@@ -2065,7 +2321,24 @@ function buildTargetBar() {
     paint();
     renderGrid();
   });
-  bar.append(label, el.status, hiddenBtn);
+  const reorderBtn = document.createElement("button");
+  reorderBtn.type = "button";
+  reorderBtn.className = "target-toggle";
+  const paintReorder = () => {
+    reorderBtn.classList.toggle("on", reorderMode);
+    reorderBtn.innerHTML = '<i class="fa-solid fa-arrows-up-down"></i><span>' + (reorderMode ? "Done" : "Reorder") + '</span>';
+    reorderBtn.title = reorderMode ? "Exit reorder mode" : "Reorder playlists";
+  };
+  paintReorder();
+  reorderBtn.addEventListener("click", () => {
+    reorderMode = !reorderMode;
+    paintReorder();
+    renderGrid();
+  });
+  const rightGroup = document.createElement("div");
+  rightGroup.className = "target-right";
+  rightGroup.append(hiddenBtn, reorderBtn);
+  bar.append(label, el.status, rightGroup);
   el.grid.parentElement.insertBefore(bar, el.grid);
   return paint;
 }
@@ -2076,7 +2349,7 @@ function buildHeader() {
   header.id = "app-header";
   const logo = document.createElement("span");
   logo.className = "header-logo";
-  logo.innerHTML = '<svg viewBox="0 0 1883 1883" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1,0,0,1,-100.338058,-100.340635)"><g transform="matrix(4.166667,0,0,4.166667,0,0)"><path d="M390.967,351.325L390.967,314.006L51.115,314.006C36.097,314.006 24.081,302.781 24.081,289.145L24.081,210.855C24.081,197.219 36.097,185.994 51.115,185.994L67.143,185.994L67.143,148.675L56.792,148.675C40.615,148.675 27.502,135.561 27.502,119.385L27.502,56.792C27.502,40.616 40.615,27.502 56.792,27.502L119.385,27.502C135.561,27.502 148.675,40.616 148.675,56.792L148.675,67.27C149.172,67.186 149.678,67.143 150.19,67.143L202.186,67.143L202.186,48.943C202.186,35.307 214.202,24.082 229.22,24.082L448.885,24.082C463.903,24.082 475.919,35.307 475.919,48.943L475.919,127.233C475.919,140.869 463.903,152.095 448.885,152.095L229.22,152.095C214.202,152.095 202.186,140.869 202.186,127.233L202.186,109.034L150.19,109.034C149.678,109.034 149.172,108.991 148.675,108.907L148.675,119.385C148.675,135.561 135.561,148.675 119.385,148.675L109.034,148.675L109.034,185.994L445.465,185.994C460.482,185.994 472.498,197.219 472.498,210.855L472.498,289.145C472.498,302.781 460.482,314.006 445.465,314.006L432.857,314.006L432.857,351.325L443.208,351.325C459.385,351.325 472.498,364.438 472.498,380.615L472.498,443.207C472.498,459.384 459.385,472.498 443.208,472.498L380.615,472.498C364.439,472.498 351.325,459.384 351.325,443.207L351.325,432.488C350.494,432.73 349.637,432.856 348.76,432.856L301.234,432.856L301.234,451.057C301.234,464.693 289.218,475.918 274.201,475.918L54.535,475.918C39.518,475.918 27.502,464.693 27.502,451.057L27.502,372.767C27.502,359.131 39.518,347.905 54.535,347.905L274.201,347.905C289.218,347.905 301.234,359.131 301.234,372.767L301.234,390.966L348.76,390.966C349.637,390.966 350.494,391.092 351.325,391.334L351.325,380.615C351.325,364.438 364.439,351.325 380.615,351.325L390.967,351.325ZM443.208,376.47L380.615,376.47C378.326,376.47 376.471,378.326 376.471,380.615L376.471,443.207C376.471,445.497 378.326,447.352 380.615,447.352L443.208,447.352C445.497,447.352 447.353,445.497 447.353,443.207L447.353,380.615C447.353,378.326 445.497,376.47 443.208,376.47ZM119.385,52.647L56.792,52.647C54.503,52.647 52.647,54.503 52.647,56.792L52.647,119.385C52.647,121.674 54.503,123.53 56.792,123.53L119.385,123.53C121.674,123.53 123.529,121.674 123.529,119.385L123.529,56.792C123.529,54.503 121.674,52.647 119.385,52.647Z" fill="currentColor"/></g></g></svg>';
+  logo.innerHTML = LOGO_SVG;
   const wrap = document.createElement("div");
   wrap.className = "header-text";
   const h1 = document.createElement("h1");
@@ -2592,7 +2865,7 @@ function buildAuthBox() {
   el.auth.innerHTML = "";
     const logo = document.createElement("span");
   logo.className = "auth-logo";
-  logo.innerHTML = '<svg viewBox="0 0 1883 1883" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1,0,0,1,-100.338058,-100.340635)"><g transform="matrix(4.166667,0,0,4.166667,0,0)"><path d="M390.967,351.325L390.967,314.006L51.115,314.006C36.097,314.006 24.081,302.781 24.081,289.145L24.081,210.855C24.081,197.219 36.097,185.994 51.115,185.994L67.143,185.994L67.143,148.675L56.792,148.675C40.615,148.675 27.502,135.561 27.502,119.385L27.502,56.792C27.502,40.616 40.615,27.502 56.792,27.502L119.385,27.502C135.561,27.502 148.675,40.616 148.675,56.792L148.675,67.27C149.172,67.186 149.678,67.143 150.19,67.143L202.186,67.143L202.186,48.943C202.186,35.307 214.202,24.082 229.22,24.082L448.885,24.082C463.903,24.082 475.919,35.307 475.919,48.943L475.919,127.233C475.919,140.869 463.903,152.095 448.885,152.095L229.22,152.095C214.202,152.095 202.186,140.869 202.186,127.233L202.186,109.034L150.19,109.034C149.678,109.034 149.172,108.991 148.675,108.907L148.675,119.385C148.675,135.561 135.561,148.675 119.385,148.675L109.034,148.675L109.034,185.994L445.465,185.994C460.482,185.994 472.498,197.219 472.498,210.855L472.498,289.145C472.498,302.781 460.482,314.006 445.465,314.006L432.857,314.006L432.857,351.325L443.208,351.325C459.385,351.325 472.498,364.438 472.498,380.615L472.498,443.207C472.498,459.384 459.385,472.498 443.208,472.498L380.615,472.498C364.439,472.498 351.325,459.384 351.325,443.207L351.325,432.488C350.494,432.73 349.637,432.856 348.76,432.856L301.234,432.856L301.234,451.057C301.234,464.693 289.218,475.918 274.201,475.918L54.535,475.918C39.518,475.918 27.502,464.693 27.502,451.057L27.502,372.767C27.502,359.131 39.518,347.905 54.535,347.905L274.201,347.905C289.218,347.905 301.234,359.131 301.234,372.767L301.234,390.966L348.76,390.966C349.637,390.966 350.494,391.092 351.325,391.334L351.325,380.615C351.325,364.438 364.439,351.325 380.615,351.325L390.967,351.325ZM443.208,376.47L380.615,376.47C378.326,376.47 376.471,378.326 376.471,380.615L376.471,443.207C376.471,445.497 378.326,447.352 380.615,447.352L443.208,447.352C445.497,447.352 447.353,445.497 447.353,443.207L447.353,380.615C447.353,378.326 445.497,376.47 443.208,376.47ZM119.385,52.647L56.792,52.647C54.503,52.647 52.647,54.503 52.647,56.792L52.647,119.385C52.647,121.674 54.503,123.53 56.792,123.53L119.385,123.53C121.674,123.53 123.529,121.674 123.529,119.385L123.529,56.792C123.529,54.503 121.674,52.647 119.385,52.647Z" fill="currentColor"/></g></g></svg>';
+  logo.innerHTML = LOGO_SVG;
   const h2 = document.createElement("h2");
   h2.textContent = "spotifylter";
   const sub = document.createElement("p");
@@ -2839,7 +3112,11 @@ async function boot() {
   gridZoom.append(gridZoomIcon, gDown, gUp);
   applyGridScale(localStorage.getItem(gKey) || 1);
 
-  songsRow.append(songsToggle, skipToggle, playerZoom, gridZoom);
+  const progressSpan = document.createElement("span");
+  progressSpan.id = "songs-progress";
+  progressSpan.className = "songs-progress";
+
+  songsRow.append(songsToggle, skipToggle, playerZoom, gridZoom, progressSpan);
 
   const songsTools = document.createElement("div");
   songsTools.className = "songs-tools";
@@ -2894,18 +3171,89 @@ async function boot() {
   songsZoom.append(sDown, sUp);
   applyZoom();
 
+const songsFilters = document.createElement("div");
+songsFilters.className = "songs-filters";
+
+const filterWrap = document.createElement("div");
+filterWrap.className = "songs-filter-wrap";
+const filterInput = document.createElement("input");
+filterInput.type = "text";
+filterInput.placeholder = "Filter name or artist";
+filterInput.className = "songs-filter-input";
+filterInput.value = songFilter;
+let filterTimer = null;
+filterInput.addEventListener("input", () => {
+  songFilter = filterInput.value;
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(renderTracks, 150);
+});
+const filterClear = document.createElement("button");
+filterClear.type = "button";
+filterClear.className = "songs-filter-clear";
+filterClear.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+filterClear.title = "Clear filter";
+filterClear.addEventListener("click", () => {
+  filterInput.value = "";
+  songFilter = "";
+  renderTracks();
+  paintQueue();
+  setFeedback("filter cleared", false);
+});
+filterWrap.append(filterInput, filterClear);
+
+const hiddenSelect = document.createElement("select");
+hiddenSelect.className = "songs-filter-select";
+hiddenSelect.append(new Option("All", "all"), new Option("Unhidden", "unhidden"), new Option("Hidden", "hidden"));
+hiddenSelect.value = songHiddenFilter;
+hiddenSelect.addEventListener("change", () => {
+  songHiddenFilter = hiddenSelect.value;
+  renderTracks();
+});
+
+const sortSelect = document.createElement("select");
+sortSelect.className = "songs-filter-select";
+for (const [v, label] of [["default", "Playlist order"], ["name", "Name"], ["artist", "Artist"], ["durationAsc", "Shortest"], ["durationDesc", "Longest"]]) {
+  sortSelect.append(new Option(label, v));
+}
+sortSelect.value = songSort;
+sortSelect.addEventListener("change", () => {
+  songSort = sortSelect.value;
+  renderTracks();
+});
+
+
+
+const queueToggle = document.createElement("button");
+queueToggle.type = "button";
+queueToggle.className = "outline-btn";
+const paintQueue = () => {
+  queueToggle.classList.toggle("on", filterQueue);
+  queueToggle.innerHTML = '<i class="fa-solid fa-list-check"></i><span>Queue filter</span>';
+  queueToggle.title = filterQueue ? "Next/prev walk only filtered songs" : "Next/prev walk the full playlist";
+};
+paintQueue();
+queueToggle.addEventListener("click", () => {
+  filterQueue = !filterQueue;
+  localStorage.setItem("sp_filter_queue", filterQueue ? "1" : "0");
+  paintQueue();
+});
+
+songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle);
+
   songsTools.append(unhideBtn, reverseBtn, spacer, songsZoom);
 
   const songsHeader = document.createElement("div");
   songsHeader.className = "songs-header";
-  songsHeader.append(songsRow, songsTools);
+  songsHeader.append(songsRow, songsTools, songsFilters);
 
   el.list.style.display = "none";
   songsTools.style.display = "none";
+  songsFilters.style.display = "none";
   songsToggle.addEventListener("click", () => {
     const open = el.list.style.display === "none";
     el.list.style.display = open ? "grid" : "none";
     songsTools.style.display = open ? "flex" : "none";
+    songsFilters.style.display = open ? "flex" : "none";
     songsToggle.classList.toggle("active", open);
   });
 
