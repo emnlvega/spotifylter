@@ -546,7 +546,7 @@ async function playTrack(trackUri, token, positionMs, attempt = 1) {
 
 function previewPosition(durationMs, part) {
   const positions = {
-    A: durationMs * 0.10,
+    A: durationMs * 0.20,
     B: durationMs * 0.30,
     C: durationMs * 0.50,
     D: durationMs * 0.60,
@@ -1371,9 +1371,7 @@ async function startSession(token) {
   } catch (err) {
     setFeedback(err.message, true);
   }
-  try {
-    await syncHold(token);
-  } catch (_) { /* best effort */ }
+
   renderGrid();
   renderSourceGrid();
   renderTracks();
