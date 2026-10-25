@@ -547,9 +547,9 @@ async function playTrack(trackUri, token, positionMs, attempt = 1) {
 function previewPosition(durationMs, part) {
   const positions = {
     A: durationMs * 0.20,
-    B: durationMs * 0.30,
+    B: durationMs * 0.35,
     C: durationMs * 0.50,
-    D: durationMs * 0.60,
+    D: durationMs * 0.65,
     E: durationMs * 0.80
   };
   return Math.floor(positions[part] || 0);
