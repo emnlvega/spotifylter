@@ -596,28 +596,34 @@ async function playFromGesture(track, token, positionMs) {
     pendingTrackUriAt = 0;
     throw err;
   }
-      setTimeout(async () => {
+  setTimeout(async () => {
     if (pendingTrackUri !== track.uri) return;
     const api = await fetchPlaybackState(token);
     if (!api) return;
-    if (api.uri === track.uri) return;
     pendingTrackUri = null;
     pendingTrackUriAt = 0;
+    if (api.uri === track.uri) return;
+    const cachedHit = findCachedTrack(api.uri);
     const apiRef = {
       uri: api.uri,
       name: api.name,
       artists: api.artists,
-      durationMs: api.durationMs
+      durationMs: api.durationMs,
+      isrc: cachedHit && cachedHit.isrc ? cachedHit.isrc : null
     };
-    if (!currentTrack || !sameRecording(currentTrack, apiRef)) {
-      const cached = findCachedTrack(api.uri);
-      currentTrack = cached || {
-        uri: api.uri,
-        name: api.name,
-        artists: api.artists,
-        durationMs: api.durationMs,
-        image: api.image
-      };
+    if (currentTrack && sameRecording(currentTrack, apiRef)) {
+      sdkStaleUri = api.uri;
+    } else {
+      const src = sourceName();
+      const srcCache = cache[src];
+      const srcMatch = srcCache && srcCache.tracks && srcCache.tracks.find(t => sameRecording(t, apiRef) || t.uri === api.uri);
+      if (srcMatch) {
+        currentTrack = srcMatch;
+      } else if (!currentTrack) {
+        currentTrack = { ...apiRef, image: api.image };
+      } else {
+        sdkStaleUri = api.uri;
+      }
     }
     el.title.textContent = currentTrack.name;
     el.artists.textContent = currentTrack.artists;
@@ -634,7 +640,8 @@ async function playFromGesture(track, token, positionMs) {
     if (toggleIcon) toggleIcon.className = api.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
     highlightTracks();
     markGridHasTrack();
-  }, 2500);
+    paintVersionsButton();
+  }, 800);
 }
 
 async function saveToLibrary(track, token, attempt = 1) {
@@ -973,7 +980,7 @@ function renderTracks() {
     });
     el.list.appendChild(card);
   }
-
+  paintVersionsButton();
 }
 
 function highlightTracks() {
@@ -1003,16 +1010,19 @@ function sameRecording(a, b) {
   if (!a || !b) return false;
   if (a.uri === b.uri) return true;
   if (a.isrc && b.isrc) return a.isrc === b.isrc;
-  const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const norm = s => String(s || "")
+    .toLowerCase()
+    .replace(/\s*[\(\[\{][^\)\]\}]*[\)\]\}]/g, "")
+    .replace(/\s*-\s*(remaster(ed)?|single|album|bonus|radio|extended|original|deluxe|version|mix|edit|live|acoustic|mono|stereo|explicit|clean)\b.*$/i, "")
+    .replace(/[^a-z0-9]+/g, "");
   const na = norm(a.name);
   const nb = norm(b.name);
   if (!na || na !== nb) return false;
-  const aa = norm(String(a.artists || "").split(",")[0]);
-  const ab = norm(String(b.artists || "").split(",")[0]);
-  if (aa !== ab) return false;
+  const artNorm = s => String(s || "").split(",")[0].trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (artNorm(a.artists) !== artNorm(b.artists)) return false;
   const da = Number(a.durationMs) || 0;
   const db = Number(b.durationMs) || 0;
-  return Math.abs(da - db) <= 2000;
+  return Math.abs(da - db) <= 3000;
 }
 
 function markGridHasTrack() {
@@ -1225,6 +1235,7 @@ function updatePlayerBar(track) {
   el.artists.textContent = track.artists || "";
   bindImg(el.art, track.image);
   el.time.textContent = "0:00 / " + formatMs(track.durationMs);
+  paintVersionsButton();
 }
 
 function onPlayerState(state) {
@@ -1259,22 +1270,30 @@ function onPlayerState(state) {
     ? prev.track_window.current_track.uri
     : null;
   if (sdkTrack && sdkTrack.uri !== prevUri) {
+    closeVersionsPanel();
     document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.add("active"));
   }
   if (sdkTrack) {
+    const cachedHit = findCachedTrack(sdkTrack.uri);
     const sdkRef = {
       uri: sdkTrack.uri,
       name: sdkTrack.name,
       artists: (sdkTrack.artists || []).map(a => a.name).join(", "),
-      durationMs: sdkTrack.duration_ms
+      durationMs: sdkTrack.duration_ms,
+      isrc: cachedHit && cachedHit.isrc ? cachedHit.isrc : null
     };
     if (!currentTrack || !sameRecording(currentTrack, sdkRef)) {
-      const fromCache = findCachedTrack(sdkTrack.uri);
-      if (fromCache) currentTrack = fromCache;
-      else currentTrack = { ...sdkRef, image: sdkTrack.album && sdkTrack.album.images && sdkTrack.album.images.length ? sdkTrack.album.images[0].url : null };
+      const src = sourceName();
+      const srcCache = cache[src];
+      const srcMatch = srcCache && srcCache.tracks && srcCache.tracks.find(t => sameRecording(t, sdkRef) || t.uri === sdkTrack.uri);
+      if (srcMatch) {
+        currentTrack = srcMatch;
+      } else if (!currentTrack) {
+        currentTrack = { ...sdkRef, image: sdkTrack.album && sdkTrack.album.images && sdkTrack.album.images.length ? sdkTrack.album.images[0].url : null };
+      }
     }
     el.title.textContent = currentTrack.name;
-    el.artists.textContent = (sdkTrack.artists || []).map(a => a.name).join(", ");
+    el.artists.textContent = currentTrack.artists;
     bindImg(el.art, currentTrack.image);
     if (pendingSeek && currentTrack) {
       const part = pendingSeek;
@@ -1294,6 +1313,111 @@ function onPlayerState(state) {
   highlightTracks();
   startProgress(state);
   markGridHasTrack();
+  paintVersionsButton();
+}
+
+function versionsOf(track) {
+  if (!track) return [];
+  const out = [];
+  const seen = new Set();
+  const order = [sourceName(), ...Object.keys(cache).filter(n => n !== sourceName())];
+  for (const name of order) {
+    const list = (cache[name] && cache[name].tracks) || [];
+    for (const t of list) {
+      if (!sameRecording(t, track)) continue;
+      if (seen.has(t.uri)) continue;
+      seen.add(t.uri);
+      out.push({ ...t, sourcePlaylist: name });
+    }
+  }
+  return out;
+}
+
+function paintVersionsButton() {
+  const btn = document.getElementById("np-versions-btn");
+  if (!btn) return;
+  const versions = versionsOf(currentTrack);
+  if (versions.length < 2) {
+    btn.style.display = "none";
+    return;
+  }
+  btn.style.display = "inline-flex";
+  const count = btn.querySelector("span");
+  if (count) count.textContent = String(versions.length);
+  btn.title = versions.length + " versions available";
+}
+
+function closeVersionsPanel() {
+  const p = document.getElementById("versions-panel");
+  if (p) p.remove();
+}
+
+function openVersionsPanel() {
+  const existing = document.getElementById("versions-panel");
+  if (existing) { existing.remove(); return; }
+  const versions = versionsOf(currentTrack);
+  if (versions.length < 2) return;
+  const center = document.querySelector("#player-view .np-center");
+  if (!center) return;
+  const panel = document.createElement("div");
+  panel.id = "versions-panel";
+  panel.className = "versions-panel";
+  for (const v of versions) {
+    const row = document.createElement("div");
+    row.className = "version-row" + (v.uri === currentTrack.uri ? " active" : "");
+    row.setAttribute("role", "button");
+    const img = document.createElement("img");
+    img.alt = "";
+    bindImg(img, v.image);
+    const meta = document.createElement("div");
+    const name = document.createElement("p");
+    name.className = "version-name";
+    name.textContent = v.name;
+    const sub = document.createElement("p");
+    sub.className = "version-sub";
+    sub.textContent = v.artists + " · " + formatMs(v.durationMs) + " · " + v.sourcePlaylist;
+    meta.append(name, sub);
+    const playBtn = document.createElement("button");
+    playBtn.type = "button";
+    playBtn.className = "version-play";
+    playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+    playBtn.title = "Play this version";
+    playBtn.addEventListener("click", async ev => {
+      ev.stopPropagation();
+      currentTrack = v;
+      updatePlayerBar(v);
+      highlightTracks();
+      markGridHasTrack();
+      paintVersionsButton();
+      closeVersionsPanel();
+      setStatus("Playing " + v.sourcePlaylist);
+      try {
+        await playFromGesture(v, await getToken());
+        highlightTracks();
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
+    });
+    row.append(img, meta, playBtn);
+    row.addEventListener("click", ev => {
+      if (ev.target.closest(".version-play")) return;
+      currentTrack = v;
+      updatePlayerBar(v);
+      highlightTracks();
+      markGridHasTrack();
+      paintVersionsButton();
+      closeVersionsPanel();
+      setFeedback("using version from " + v.sourcePlaylist + " (press play to hear it)", false);
+    });
+    panel.appendChild(row);
+  }
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "versions-close";
+  close.textContent = "Close";
+  close.addEventListener("click", () => closeVersionsPanel());
+  panel.appendChild(close);
+  center.appendChild(panel);
 }
 
 function findCachedTrack(uri) {
@@ -1375,6 +1499,7 @@ async function startSession(token) {
   renderGrid();
   renderSourceGrid();
   renderTracks();
+  paintVersionsButton();
   setStatus("Ready · " + who);
 }
 
@@ -1643,6 +1768,7 @@ async function playAdjacent(dir, hide) {
       renderTracks();
       highlightTracks();
       markGridHasTrack();
+      paintVersionsButton();
       return;
     }
   }
@@ -1674,7 +1800,15 @@ function buildPlayer() {
   el.title.className = "np-title";
   el.artists.className = "np-artists";
   progressWrap.classList.add("np-progress");
-  center.append(el.art, el.title, el.artists, progressWrap, el.time);
+  const versionsBtn = document.createElement("button");
+  versionsBtn.type = "button";
+  versionsBtn.id = "np-versions-btn";
+  versionsBtn.className = "np-versions-btn";
+  versionsBtn.innerHTML = '<i class="fa-solid fa-code-branch"></i><span>1</span>';
+  versionsBtn.style.display = "none";
+  versionsBtn.title = "Switch version";
+  versionsBtn.addEventListener("click", openVersionsPanel);
+  center.append(el.art, el.title, el.artists, versionsBtn, progressWrap, el.time);
   const controls = document.createElement("div");
   controls.className = "np-controls";
   const prev = document.createElement("button");
@@ -1954,7 +2088,6 @@ function buildHeader() {
   out.className = "header-signout";
   out.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i><span>Sign out</span>';
   out.addEventListener("click", signOut);
-  header.appendChild(buildApiCounter());
   header.appendChild(out);
   el.main.insertBefore(header, el.main.firstChild);
   document.querySelectorAll("h1, h2, h3, header").forEach(node => {
@@ -2025,6 +2158,7 @@ async function reconcileDevice() {
   if (toggleIcon) toggleIcon.className = api.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
   highlightTracks();
   markGridHasTrack();
+  paintVersionsButton();
   setStatus("Playing on " + (api.device && api.device.name || "another device"));
 }
 
@@ -2871,6 +3005,13 @@ async function boot() {
       } catch (err) {
         setFeedback(err.message, true);
       }
+    });
+      document.addEventListener("click", e => {
+      const panel = document.getElementById("versions-panel");
+      if (!panel) return;
+      if (panel.contains(e.target)) return;
+      if (e.target.closest("#np-versions-btn")) return;
+      closeVersionsPanel();
     });
     let token = null;
     try {
