@@ -218,13 +218,10 @@ select:focus, input:focus, textarea:focus {
   height: 340px;
   object-fit: cover;
   border-radius: var(--r-lg);
-  background: var(--accent);
+  background: var(--surface);
   display: block;
 }
-#player-view .np-art {
-  border: 0;
-  outline: 0;
-}
+
 
 #player-view .np-title {
   margin: 0;

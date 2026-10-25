@@ -2029,6 +2029,7 @@ function buildPlayer() {
   const center = document.createElement("div");
   center.className = "np-center";
   el.art.className = "np-art";
+  bindImg(el.art, null);
   el.title.className = "np-title";
   el.artists.className = "np-artists";
   progressWrap.classList.add("np-progress");
