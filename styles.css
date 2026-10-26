@@ -21,9 +21,10 @@ html {
 }
 
 body {
-  background-color: #0a0d12;
-
+  background: linear-gradient(45deg, #1a232e 0%, #0b0f15 60%, #1a232e 100%);
+  background-attachment: fixed;
 }
+
 
 * { box-sizing: border-box; }
 
@@ -31,7 +32,6 @@ body {
   margin: 0;
   padding: 24px;
   min-height: 100vh;
-  background:var(--bg);
   background-attachment: fixed;
   color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -295,7 +295,7 @@ select:focus, input:focus, textarea:focus {
 }
 
 #player-view .np-controls .np-nav {
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
   border: 2px solid var(--accent);
   box-shadow: none;
@@ -316,7 +316,7 @@ select:focus, input:focus, textarea:focus {
 
 #player-view .np-controls .np-nav:hover,
 #player-view .np-controls .np-nav:active {
-  background: var(--bg);
+  background: transparent;
   color: var(--accent);
   border-color: var(--accent);
   transform: translateY(-120%);
