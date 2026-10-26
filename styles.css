@@ -210,6 +210,7 @@ select:focus, input:focus, textarea:focus {
   align-items: center;
   gap: 14px;
   flex: 1;
+  min-width: 0;
   max-width: 480px;
 }
 
@@ -229,7 +230,9 @@ select:focus, input:focus, textarea:focus {
   font-weight: 700;
   text-align: center;
   line-height: 1.25;
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
