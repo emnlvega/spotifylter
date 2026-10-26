@@ -2229,6 +2229,7 @@ function buildPlayer() {
     if (player) player.setVolume(v);
   });
   volume.append(vIcon, vRange);
+  volume.style.display = "none";
   center.appendChild(volume);
   card.appendChild(center);
   view.appendChild(card);
