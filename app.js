@@ -83,6 +83,8 @@ const API_LOG_KEY = "sp_api_log";
 const API_HOLD_KEY = "sp_api_hold";
 const API_BUDGET_15M = 40;
 const PLAYLIST_DATA_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/playlistdata";
+const CLEAROPS_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/clearops";
+const PLAYLIST_DATA_INDEX_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/playlistdata_index";
 
 
 let cache = {};
@@ -734,6 +736,7 @@ function applyOp(op) {
   if (entry.loadedAt && opTime <= entry.loadedAt) return true;
   if (op.action === "remove") {
     entry.tracks = entry.tracks.filter(t => t.uri !== op.trackUri);
+    entry.loadedAt = Math.max(Number(entry.loadedAt) || 0, opTime);
     return true;
   }
   if (op.action === "add") {
@@ -744,6 +747,7 @@ function applyOp(op) {
     if (!track) track = lookupTrack(op.trackUri);
     if (!track) track = { uri: op.trackUri, name: op.trackUri, artists: "", durationMs: 0, image: null };
     if (!entry.tracks.some(t => sameRecording(t, track))) entry.tracks.push(track);
+    entry.loadedAt = Math.max(Number(entry.loadedAt) || 0, opTime);
     return true;
   }
   return false;
@@ -805,8 +809,9 @@ async function addTrack(track, selectedName, token) {
       partial: true
     };
   }
-    if (!cache[selectedName].tracks) cache[selectedName].tracks = [];
+  if (!cache[selectedName].tracks) cache[selectedName].tracks = [];
   cache[selectedName].tracks.push(track);
+  cache[selectedName].loadedAt = Date.now();
   writeCache();
   pushOp({
     playlistId: PLAYLISTS[selectedName].id,
@@ -906,6 +911,88 @@ async function syncPlaylistToWix(name, token) {
   } catch (err) {
     console.warn("[data] push network error", name, err.message);
   }
+}
+
+async function clearOpsForPlaylist(name, token) {
+  const entry = cache[name];
+  if (!entry || !entry.id) return;
+  try {
+    const res = await fetch(CLEAROPS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accessToken: token, playlistId: entry.id })
+    });
+    const json = await res.json().catch(() => ({}));
+    console.log("[data] clear ops", name, res.ok && !json.error ? ("cleared " + (json.cleared || 0)) : ("failed " + (json.error || res.status)));
+  } catch (err) {
+    console.warn("[data] clear ops error", name, err.message);
+  }
+}
+
+async function commitPlaylist(name, token) {
+  const entry = cache[name];
+  if (!entry || !entry.id || entry.partial || !entry.tracks || !entry.tracks.length) {
+    console.log("[data] commit skip", name, "nothing to commit");
+    return;
+  }
+  try {
+    await syncPlaylistToWix(name, token);
+  } catch (_) {
+    console.log("[data] commit skip", name, "push failed, keeping ops");
+    return;
+  }
+  await clearOpsForPlaylist(name, token);
+}
+
+async function applyPlaylistFromWix(name, token) {
+  const entry = PLAYLISTS[name];
+  if (!entry || !entry.id) return false;
+  try {
+    const res = await fetch(
+      PLAYLIST_DATA_URL
+        + "?accessToken=" + encodeURIComponent(token)
+        + "&playlistId=" + encodeURIComponent(entry.id)
+    );
+    if (!res.ok) return false;
+    const json = await res.json();
+    if (json.error || !json.data) return false;
+    const parsed = JSON.parse(json.data);
+    if (!parsed || !Array.isArray(parsed.tracks) || !parsed.tracks.length) return false;
+    cache[name] = {
+      id: entry.id,
+      label: parsed.label || entry.label,
+      image: parsed.image || null,
+      loadedAt: Number(parsed.loadedAt) || Date.now(),
+      total: parsed.total || parsed.tracks.length,
+      tracks: parsed.tracks
+    };
+    writeCache();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function syncAllPlaylistsFromWix(token) {
+  const res = await fetch(PLAYLIST_DATA_INDEX_URL + "?accessToken=" + encodeURIComponent(token));
+  if (!res.ok) return 0;
+  const json = await res.json();
+  if (json.error) return 0;
+  const items = json.items || [];
+  if (!items.length) return 0;
+  const byId = {};
+  for (const [name, entry] of Object.entries(PLAYLISTS)) byId[entry.id] = name;
+  let applied = 0;
+  for (const item of items) {
+    const name = byId[item.playlistId];
+    if (!name) continue;
+    const local = cache[name];
+    const localAt = local && !local.partial ? Number(local.loadedAt) || 0 : 0;
+    const wixAt = Number(item.loadedAt) || 0;
+    if (wixAt <= localAt) continue;
+    if (await applyPlaylistFromWix(name, token)) applied++;
+  }
+  return applied;
 }
 
 async function resolvePlaylistData(name, token) {
@@ -1008,7 +1095,7 @@ async function selectSource(name, play) {
     if (source === "none") {
       console.log("[data] select", name, "-> API fetch (no local, no wix)");
       await loadPlaylist(name, token);
-      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
+      await commitPlaylist(name, token);
     } else {
       console.log("[data] select", name, "-> resolved from", source, "(0 API calls)");
     }
@@ -1292,7 +1379,7 @@ function renderGrid() {
     try {
       const token = await getToken();
       await loadPlaylist(name, token);
-      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
+      await commitPlaylist(name, token);
       renderGrid();
       renderTracks();
       setFeedback("synced " + name, false);
@@ -1354,6 +1441,7 @@ async function removeTrack(track, name, token) {
   if (!res.ok && res.status !== 200) throw new Error("ERROR remove " + name + " " + res.status);
     if (entry && entry.tracks) {
     entry.tracks = entry.tracks.filter(t => !sameRecording(t, track));
+    entry.loadedAt = Date.now();
     writeCache();
   }
   pushOp({
@@ -1822,6 +1910,12 @@ async function startSession(token) {
   } catch (err) {
     setFeedback(err.message, true);
   }
+  try {
+    const applied = await syncAllPlaylistsFromWix(token);
+    if (applied) console.log("[data] boot sync applied", applied, "playlists");
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
 
   renderGrid();
   renderSourceGrid();
@@ -1829,6 +1923,7 @@ async function startSession(token) {
   paintVersionsButton();
   setStatus("");
 }
+
 async function usePastedToken(raw) {
   const parsed = parseCredential(raw);
   if (parsed.type === "empty") throw new Error("ERROR no token");
@@ -2178,6 +2273,30 @@ function buildPlayer() {
     try {
       await player.activateElement();
       const token = await getToken();
+      const src = sourceName();
+      const srcEntry = cache[src];
+      const needsLoad = !srcEntry || !srcEntry.tracks || !srcEntry.tracks.length || srcEntry.partial;
+      if (needsLoad) {
+        setStatus("Loading " + src);
+        const source = await resolvePlaylistData(src, token);
+        if (source === "none") {
+          await loadPlaylist(src, token);
+          try { await commitPlaylist(src, token); } catch (_) { /* best effort */ }
+        }
+        setStatus("");
+        renderTracks();
+      }
+      if (!currentTrack) {
+        const tracks = (cache[src] && cache[src].tracks) || [];
+        const first = tracks.find(t => !isHidden(src, t.uri)) || tracks[0];
+        if (first) {
+          currentTrack = first;
+          updatePlayerBar(first);
+          highlightTracks();
+          markGridHasTrack();
+          paintVersionsButton();
+        }
+      }
       const real = await fetchPlaybackState(token);
       const isPlaying = real ? !real.paused : (lastState ? !lastState.paused : false);
       if (isPlaying) {
