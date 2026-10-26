@@ -22,6 +22,7 @@ html {
 
 body {
   background-color: #0a0d12;
+
 }
 
 * { box-sizing: border-box; }
@@ -30,14 +31,12 @@ body {
   margin: 0;
   padding: 24px;
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 600px at 15% -10%, #141b24 0%, transparent 60%),
-    radial-gradient(900px 500px at 85% 0%, #10161e 0%, transparent 55%),
-    linear-gradient(90deg, #0b0f15 0%, var(--bg) 45%, #070a0e 100%);
+  background:var(--bg);
   background-attachment: fixed;
   color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
+
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
@@ -124,11 +123,12 @@ select:focus, input:focus, textarea:focus {
 
 .songs-row, .ui-toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 20px;
   align-items: center;
-  margin: 12px 0;
+  margin: 0px 0;
+
   max-width: 100%;
+  border-radius: 8px;
 }
 
 .songs-toggle {
@@ -150,7 +150,7 @@ select:focus, input:focus, textarea:focus {
 }
 
 .songs-toggle.active {
-  background: transparent;
+  background: var(--bg);
   color: var(--accent);
 }
 
@@ -169,7 +169,7 @@ select:focus, input:focus, textarea:focus {
   align-items: center;
   padding: 4px 8px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent);
   border-radius: var(--r-sm);
 }
 
@@ -295,6 +295,7 @@ select:focus, input:focus, textarea:focus {
   color: var(--text);
   border: 2px solid var(--accent);
   box-shadow: none;
+  
   position: absolute;
   top: 50%;
   transform: translateY(-120%);
@@ -326,6 +327,9 @@ select:focus, input:focus, textarea:focus {
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 12px;
   align-content: start;
+  padding: 10px;
+  background: var(--line);
+  border-radius: 8px;
   margin-top: 12px;
 }
 
@@ -425,8 +429,8 @@ select:focus, input:focus, textarea:focus {
 #target-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 12px;
-  margin-top: 12px;
+  gap: 5px;
+  margin-top: 5px;
 }
 
 #target-grid button {
@@ -746,7 +750,7 @@ input[type="range"]::-moz-range-thumb {
     width: calc(100% + 28px);
     margin: -14px -14px 16px -14px;
   }
-    #app-header .header-logo { width: 26px; height: 26px; }
+
   #app-header h1 { font-size: 17px; }
 }
 
@@ -755,12 +759,8 @@ input[type="range"]::-moz-range-thumb {
   overflow-y: auto;
   overflow-x: hidden;
   margin-top: 8px;
-}
-.songs-panel .songs-row {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: 4px 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
 }
 
 #track-list .songs-zoom {
@@ -1173,7 +1173,7 @@ body.auth-mode #auth-box {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin: 14px 0 8px;
+  
 }
 .sources-label,
 .target-label {
@@ -1220,7 +1220,7 @@ body.auth-mode #auth-box {
 }
 
 .target-right {
-  margin-left: auto;
+
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1303,26 +1303,38 @@ body.auth-mode #auth-box {
 .songs-panel {
   max-height: 60vh;
   overflow-y: auto;
+  background: var(--surface);
   overflow-x: hidden;
-  margin-top: 8px;
+  margin-top: 5px;
 }
 .songs-header {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: #0c1016;
-  padding: 4px 0 8px;
+  background: var(--surface);
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  border-radius: var(--r-md);
+
 }
 .songs-header .songs-row {
   margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  
+  row-gap: 5px;
+}
+.songs-header .songs-row > button,
+.songs-header .songs-row > .zoom-group {
+  flex-shrink: 0;
 }
 .songs-tools {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+
   align-items: center;
 }
 .songs-tools-spacer {
@@ -1499,12 +1511,12 @@ body.auth-mode #auth-box {
   font-weight: 700;
   color: var(--accent);
   white-space: nowrap;
+
 }
 
 #player-view .np-volume {
   display: flex;
   align-items: center;
-  gap: 8px;
   font-size: 11px;
   color: var(--accent);
   width: 100%;
@@ -1663,3 +1675,48 @@ body.auth-mode #auth-box {
 }
 #target-grid .reorder-up { top: 30%; }
 #target-grid .reorder-down { top: 55%; }
+
+#target-grid .grid-minus {
+  border-radius: var(--r-sm);
+}
+
+#target-grid .grid-sync {
+  border-radius: var(--r-sm);
+}
+
+#track-list .track .track-unhide {
+  border-radius: var(--r-sm);
+}
+
+.sources-collapse {
+  border-radius: var(--r-sm);
+}
+
+.target-toggle {
+  border-radius: var(--r-sm);
+}
+
+#player-view .np-controls button {
+  border-radius: var(--r-sm);
+}
+
+#player-view .np-versions-btn {
+  border-radius: var(--r-sm);
+}
+
+#player-view .np-nav {
+  border-radius: var(--r-sm);
+}
+
+.version-play {
+  border-radius: var(--r-sm);
+}
+
+#target-grid .reorder-arrow {
+  border-radius: var(--r-sm);
+}
+
+.target-bar.target-bottom {
+  margin-top: 10px;
+  margin-bottom: 16px;
+}

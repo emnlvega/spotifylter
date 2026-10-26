@@ -2307,21 +2307,31 @@ function buildTargetBar() {
   const label = document.createElement("span");
   label.className = "target-label";
   label.textContent = "Add current track";
+  const progressSpan = document.createElement("span");
+  progressSpan.id = "songs-progress";
+  progressSpan.className = "songs-progress";
+  bar.append(label, progressSpan, el.status);
+  el.grid.parentElement.insertBefore(bar, el.grid);
+
+  const bottom = document.createElement("div");
+  bottom.className = "target-bar target-bottom";
+
   const hiddenBtn = document.createElement("button");
   hiddenBtn.type = "button";
   hiddenBtn.className = "target-toggle";
-  const paint = () => {
+  const paintHidden = () => {
     const n = hiddenGrid().length;
     hiddenBtn.classList.toggle("on", showHiddenGrid);
     hiddenBtn.innerHTML = '<i class="fa-solid ' + (showHiddenGrid ? "fa-eye" : "fa-eye-slash") + '"></i><span>Hidden' + (n ? " · " + n : "") + '</span>';
     hiddenBtn.title = showHiddenGrid ? "Hide hidden playlists" : "Show hidden playlists";
   };
-  paint();
+  paintHidden();
   hiddenBtn.addEventListener("click", () => {
     showHiddenGrid = !showHiddenGrid;
-    paint();
+    paintHidden();
     renderGrid();
   });
+
   const reorderBtn = document.createElement("button");
   reorderBtn.type = "button";
   reorderBtn.className = "target-toggle";
@@ -2336,12 +2346,14 @@ function buildTargetBar() {
     paintReorder();
     renderGrid();
   });
-  const rightGroup = document.createElement("div");
-  rightGroup.className = "target-right";
-  rightGroup.append(hiddenBtn, reorderBtn);
-  bar.append(label, el.status, rightGroup);
-  el.grid.parentElement.insertBefore(bar, el.grid);
-  return paint;
+
+  const right = document.createElement("div");
+  right.className = "target-right";
+  right.append(hiddenBtn, reorderBtn);
+  bottom.appendChild(right);
+  el.grid.parentElement.insertBefore(bottom, el.grid.nextSibling);
+
+  return paintHidden;
 }
 
 function buildHeader() {
@@ -2353,9 +2365,7 @@ function buildHeader() {
   logo.innerHTML = LOGO_SVG;
   const wrap = document.createElement("div");
   wrap.className = "header-text";
-  const h1 = document.createElement("h1");
-  h1.textContent = "spotifylter";
-  wrap.append(h1);
+
   header.append(logo, wrap);
   const out = document.createElement("button");
   out.type = "button";
@@ -3113,11 +3123,9 @@ async function boot() {
   gridZoom.append(gridZoomIcon, gDown, gUp);
   applyGridScale(localStorage.getItem(gKey) || 1);
 
-  const progressSpan = document.createElement("span");
-  progressSpan.id = "songs-progress";
-  progressSpan.className = "songs-progress";
 
-  songsRow.append(songsToggle, skipToggle, playerZoom, gridZoom, progressSpan);
+
+  songsRow.append(songsToggle, skipToggle, playerZoom, gridZoom);
 
   const songsTools = document.createElement("div");
   songsTools.className = "songs-tools";
@@ -3291,7 +3299,7 @@ songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle);
   const panelHost = document.createElement("div");
   panelHost.id = "tool-panel-host";
   toolsHost.append(toolsGrid, panelHost);
-  toolbar.parentElement.insertBefore(toolsHost, toolbar.nextSibling);
+  songsPanel.parentElement.insertBefore(toolsHost, songsPanel.nextSibling);
 
   const toolsBtn = document.createElement("button");
   toolsBtn.type = "button";
@@ -3305,7 +3313,7 @@ songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle);
     renderToolsGrid();
     paintTools();
   });
-  toolbar.appendChild(toolsBtn);
+    songsRow.appendChild(toolsBtn);
   renderToolsGrid();
   paintToolsBadge();
 
@@ -3325,7 +3333,9 @@ songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle);
       reloadBtn.disabled = false;
     }
   });
-  toolbar.appendChild(reloadBtn);
+  songsRow.appendChild(reloadBtn);
+
+  toolbar.remove();
 
     el.source.parentElement.insertBefore(buildSourcesBar(), el.source);
   paintTargetBar = buildTargetBar();
