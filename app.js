@@ -82,6 +82,8 @@ const PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent(
 const API_LOG_KEY = "sp_api_log";
 const API_HOLD_KEY = "sp_api_hold";
 const API_BUDGET_15M = 40;
+const PLAYLIST_DATA_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/playlistdata";
+
 
 let cache = {};
 let player = null;
@@ -156,8 +158,8 @@ function setStatus(text) {
 }
 
 function setFeedback(text, isError) {
-  el.feedback.textContent = text || "";
-  el.feedback.classList.toggle("error", Boolean(isError));
+  el.status.textContent = text || "";
+  el.status.classList.toggle("error", Boolean(isError));
 }
 
 function formatMs(ms) {
@@ -859,6 +861,115 @@ function renderSourceGrid() {
   
 }
 
+async function syncPlaylistToWix(name, token) {
+  const entry = cache[name];
+  if (!entry || !entry.id) {
+    console.log("[data] push skip", name, "no entry or id");
+    return;
+  }
+  if (entry.partial) {
+    console.log("[data] push skip", name, "entry is partial");
+    return;
+  }
+  if (!entry.tracks || !entry.tracks.length) {
+    console.log("[data] push skip", name, "no tracks");
+    return;
+  }
+  const payload = JSON.stringify({
+    label: entry.label,
+    image: entry.image,
+    total: entry.total,
+    loadedAt: entry.loadedAt,
+    tracks: entry.tracks
+  });
+  console.log("[data] push start", name, entry.tracks.length + " tracks", payload.length + " bytes");
+  try {
+    const res = await fetch(PLAYLIST_DATA_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessToken: token,
+        playlistId: entry.id,
+        data: payload
+      })
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn("[data] push failed", name, res.status, json.error || "");
+      return;
+    }
+    if (json.error) {
+      console.warn("[data] push error", name, json.error);
+      return;
+    }
+    console.log("[data] push ok", name, entry.tracks.length + " tracks");
+  } catch (err) {
+    console.warn("[data] push network error", name, err.message);
+  }
+}
+
+async function resolvePlaylistData(name, token) {
+  const entry = PLAYLISTS[name];
+  if (!entry || !entry.id) {
+    console.log("[data] resolve", name, "no playlist id");
+    return "none";
+  }
+  const local = cache[name];
+  const localComplete = Boolean(local && local.tracks && local.tracks.length && !local.partial);
+  const localAt = localComplete ? Number(local.loadedAt) || 0 : 0;
+  console.log("[data] resolve", name, "local", localComplete ? (local.tracks.length + " tracks") : "incomplete", localAt ? new Date(localAt).toISOString() : "no date");
+
+  let wix = null;
+  let wixAt = 0;
+  try {
+    const res = await fetch(
+      PLAYLIST_DATA_URL
+        + "?accessToken=" + encodeURIComponent(token)
+        + "&playlistId=" + encodeURIComponent(entry.id)
+    );
+    if (res.ok) {
+      const json = await res.json();
+      if (!json.error && json.data) {
+        const parsed = JSON.parse(json.data);
+        if (parsed && Array.isArray(parsed.tracks) && parsed.tracks.length) {
+          wix = parsed;
+          wixAt = Number(parsed.loadedAt) || 0;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[data] wix fetch error", name, err.message);
+  }
+  console.log("[data] resolve", name, "wix", wix ? (wix.tracks.length + " tracks") : "empty", wixAt ? new Date(wixAt).toISOString() : "no date");
+
+  if (localComplete && localAt >= wixAt) {
+    if (!wix || wixAt < localAt) {
+      console.log("[data] resolve", name, "-> local wins, pushing to wix");
+      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
+    } else {
+      console.log("[data] resolve", name, "-> local wins (equal or newer), wix already up to date");
+    }
+    return "local";
+  }
+
+  if (wix) {
+    console.log("[data] resolve", name, "-> wix wins, applying to local");
+    cache[name] = {
+      id: entry.id,
+      label: wix.label || entry.label,
+      image: wix.image || null,
+      loadedAt: wixAt,
+      total: wix.total || wix.tracks.length,
+      tracks: wix.tracks
+    };
+    writeCache();
+    return "wix";
+  }
+
+  console.log("[data] resolve", name, "-> nothing anywhere, will hit API");
+  return "none";
+}
+
 async function selectSource(name, play) {
   localStorage.setItem(SOURCE_KEY, name);
   const grid = document.getElementById("source-grid");
@@ -873,8 +984,7 @@ async function selectSource(name, play) {
       updatePlayerBar(first);
     }
   };
-  const cached = cache[name];
-  if (cached && cached.tracks && cached.tracks.length && !cached.partial && Date.now() - cached.loadedAt < 30000) {
+  const finish = async () => {
     renderTracks();
     pickFirst();
     highlightTracks();
@@ -890,45 +1000,22 @@ async function selectSource(name, play) {
         setFeedback(err.message, true);
       }
     }
-    return;
-  }
+  };
   try {
     const token = await getToken();
-    const raw = String(PLAYLISTS[name].id || "").trim();
-    const match = raw.match(/([0-9A-Za-z]{22})(?:[?/]|$)/);
-    const id = match ? match[1] : raw;
-    setStatus("Checking " + name);
-    const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${id}`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!metaRes.ok) throw new Error("ERROR meta " + name + " " + metaRes.status);
-    const meta = await metaRes.json();
-    const realTotal = meta.tracks && typeof meta.tracks.total === "number" ? meta.tracks.total : null;
-    const cachedTotal = cached && typeof cached.total === "number" ? cached.total : (cached && cached.tracks ? cached.tracks.length : -1);
-    const inSync = cached && !cached.partial && realTotal !== null && cachedTotal === realTotal;
-    if (inSync) {
-      setStatus("Ready · Playlist Filter");
-      renderTracks();
-      pickFirst();
-      highlightTracks();
-      markGridHasTrack();
+    setStatus("Loading " + name);
+    const source = await resolvePlaylistData(name, token);
+    if (source === "none") {
+      console.log("[data] select", name, "-> API fetch (no local, no wix)");
+      await loadPlaylist(name, token);
+      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
     } else {
-      setStatus("Loading " + name);
-      await loadPlaylist(name, token, meta);
-      setStatus("Ready · Playlist Filter");
-      renderTracks();
-      pickFirst();
-      highlightTracks();
-      markGridHasTrack();
+      console.log("[data] select", name, "-> resolved from", source, "(0 API calls)");
     }
-    if (play && currentTrack) {
-      await playFromGesture(currentTrack, token);
-      updatePlayerBar(currentTrack);
-      highlightTracks();
-      markGridHasTrack();
-    }
+    setStatus("");
+    await finish();
   } catch (err) {
+    setStatus("");
     setFeedback(err.message, true);
   }
 }
@@ -975,7 +1062,7 @@ function paintSongsProgress(name) {
   const total = all.length;
   const pct = total ? Math.round((hidden / total) * 100) : 0;
   const node = document.getElementById("songs-progress");
-  if (node) node.textContent = hidden + " hidden · " + total + " total · " + pct + "%";
+  if (node) node.textContent = hidden + " filtered · " + total + " total · " + pct + "%";
 }
 
 function queueTracks(name) {
@@ -1183,35 +1270,42 @@ function renderGrid() {
     bindImg(img, entry.image || (cache[name] && cache[name].image));
     const label = document.createElement("span");
     label.textContent = entry.label;
-    const badge = document.createElement("span");
-    badge.className = "grid-minus";
-    badge.setAttribute("role", "button");
-    badge.textContent = isHidden ? "+" : "-";
-    badge.addEventListener("click", ev => {
-      ev.stopPropagation();
-      hideGrid(name, !isHidden);
+    if (reorderMode) {
+  const badge = document.createElement("span");
+  badge.className = "grid-minus";
+  badge.setAttribute("role", "button");
+  badge.textContent = isHidden ? "+" : "-";
+  badge.addEventListener("click", ev => {
+    ev.stopPropagation();
+    hideGrid(name, !isHidden);
+    renderGrid();
+  });
+  const sync = document.createElement("span");
+  sync.className = "grid-sync";
+  sync.setAttribute("role", "button");
+  sync.innerHTML = '<i class="fa-solid fa-rotate"></i>';
+  sync.title = "Sync this playlist";
+  sync.addEventListener("click", async ev => {
+    ev.stopPropagation();
+    if (sync.classList.contains("busy")) return;
+    sync.classList.add("busy");
+    try {
+      const token = await getToken();
+      await loadPlaylist(name, token);
+      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
       renderGrid();
-    });
-    const sync = document.createElement("span");
-    sync.className = "grid-sync";
-    sync.setAttribute("role", "button");
-    sync.innerHTML = '<i class="fa-solid fa-rotate"></i>';
-    sync.title = "Sync this playlist";
-    sync.addEventListener("click", async ev => {
-      ev.stopPropagation();
-      if (sync.classList.contains("busy")) return;
-      sync.classList.add("busy");
-      try {
-        await loadPlaylist(name, await getToken());
-        renderGrid();
-        setFeedback("synced " + name, false);
-      } catch (err) {
-        setFeedback(err.message, true);
-      } finally {
-        sync.classList.remove("busy");
-      }
-    });
-    btn.append(img, label, badge, sync);
+      renderTracks();
+      setFeedback("synced " + name, false);
+    } catch (err) {
+      setFeedback(err.message, true);
+    } finally {
+      sync.classList.remove("busy");
+    }
+  });
+  btn.append(img, label, badge, sync);
+} else {
+  btn.append(img, label);
+}
     const has = cur && cache[name] && cache[name].tracks && cache[name].tracks.some(t => sameRecording(t, currentTrack));
 if (has) btn.classList.add("has-track");
 
@@ -1733,9 +1827,8 @@ async function startSession(token) {
   renderSourceGrid();
   renderTracks();
   paintVersionsButton();
-  setStatus("Ready · " + who);
+  setStatus("");
 }
-
 async function usePastedToken(raw) {
   const parsed = parseCredential(raw);
   if (parsed.type === "empty") throw new Error("ERROR no token");
@@ -1811,6 +1904,7 @@ async function openManualPlaylist(token) {
       PLAYLISTS[name] = { id: pl.id, label: name, image: null };
       SOURCE_CANDIDATES.push(name);
       await loadPlaylist(name, token);
+      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
       clearPlaylistsCache();
       localStorage.setItem(SOURCE_KEY, name);
       renderSourceGrid();
@@ -2116,21 +2210,7 @@ function buildPlayer() {
       setFeedback(err.message, true);
     }
   });
-    const playAllBtn = document.createElement("button");
-  playAllBtn.type = "button";
-  playAllBtn.className = "np-shuffle";
-  const paintPlayAll = () => {
-    playAllBtn.innerHTML = '<i class="fa-solid fa-eye"></i>';
-    playAllBtn.classList.toggle("active", playAll);
-    playAllBtn.title = playAll ? "Playing all tracks (hidden included)" : "Skipping hidden tracks";
-  };
-  paintPlayAll();
-  playAllBtn.addEventListener("click", () => {
-    playAll = !playAll;
-    localStorage.setItem("sp_play_all", playAll ? "1" : "0");
-    paintPlayAll();
-    renderTracks();
-  });
+
   const recentBtn = document.createElement("button");
   recentBtn.type = "button";
   recentBtn.id = "np-recent-btn";
@@ -2211,7 +2291,7 @@ function buildPlayer() {
     if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
     paintRnd();
   });
-  controls.append(prev, toggle, rnd, playAllBtn, recentBtn, volumeBtn, next);
+  controls.append(prev, toggle, rnd, recentBtn, volumeBtn, next);
   center.appendChild(seeks);
   const volume = document.createElement("div");
   volume.className = "np-volume";
@@ -2360,7 +2440,7 @@ function buildTargetBar() {
   bar.className = "target-bar";
   const label = document.createElement("span");
   label.className = "target-label";
-  label.textContent = "Add current track";
+  label.textContent = "";
   const progressSpan = document.createElement("span");
   progressSpan.id = "songs-progress";
   progressSpan.className = "songs-progress";
@@ -2447,7 +2527,7 @@ async function reloadGridPlaylists() {
       setFeedback(err.message, true);
     }
   }
-  setStatus("Ready · spotifylter");
+  setStatus("");
   renderGrid();
   renderTracks();
   highlightTracks();
@@ -2895,12 +2975,13 @@ async function openTool(toolId, token) {
         partial: false
       };
       writeCache();
+      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
       clearPlaylistsCache();
       renderSourceGrid();
       renderGrid();
       panel.remove();
       setFeedback("created " + name + " · " + built.length + " songs", false);
-      setStatus("Ready · spotifylter");
+      setStatus("");
     } catch (err) {
       create.disabled = false;
       create.textContent = "Create playlist";
@@ -3118,7 +3199,7 @@ async function boot() {
   const skipToggle = document.createElement("button");
   skipToggle.type = "button";
   skipToggle.className = "outline-btn";
-  skipToggle.innerHTML = '<i class="fa-solid fa-forward-step"></i><span>Skip hides</span>';
+  skipToggle.innerHTML = '<i class="fa-solid fa-forward-step"></i><span>Skip Filtered</span>';
   const paintSkip = () => skipToggle.classList.toggle("on", hideOnSkip);
   paintSkip();
   skipToggle.addEventListener("click", () => {
@@ -3187,7 +3268,7 @@ async function boot() {
   const unhideBtn = document.createElement("button");
   unhideBtn.type = "button";
   unhideBtn.className = "outline-btn";
-  unhideBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Unhide all</span>';
+  unhideBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Unfilter all</span>';
   unhideBtn.addEventListener("click", () => unhideAll());
 
   const reverseBtn = document.createElement("button");
@@ -3266,7 +3347,7 @@ filterWrap.append(filterInput, filterClear);
 
 const hiddenSelect = document.createElement("select");
 hiddenSelect.className = "songs-filter-select";
-hiddenSelect.append(new Option("All", "all"), new Option("Unhidden", "unhidden"), new Option("Hidden", "hidden"));
+hiddenSelect.append(new Option("All", "all"), new Option("Unfiltered", "unhidden"), new Option("Filtered", "hidden"));
 hiddenSelect.value = songHiddenFilter;
 hiddenSelect.addEventListener("change", () => {
   songHiddenFilter = hiddenSelect.value;
@@ -3301,7 +3382,23 @@ queueToggle.addEventListener("click", () => {
   paintQueue();
 });
 
-songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle);
+const playAllBtn = document.createElement("button");
+playAllBtn.type = "button";
+playAllBtn.className = "outline-btn";
+const paintPlayAll = () => {
+  playAllBtn.classList.toggle("on", playAll);
+  playAllBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Play filtered</span>';
+  playAllBtn.title = playAll ? "Playing all tracks (hidden included)" : "Skipping filtered tracks";
+};
+paintPlayAll();
+playAllBtn.addEventListener("click", () => {
+  playAll = !playAll;
+  localStorage.setItem("sp_play_all", playAll ? "1" : "0");
+  paintPlayAll();
+  renderTracks();
+});
+
+songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle, playAllBtn);
 
   songsTools.append(unhideBtn, reverseBtn, spacer, songsZoom);
 

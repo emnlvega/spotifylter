@@ -5,6 +5,7 @@
   --line: #262e3a;
   --text: #e8ecf2;
   --muted: #8b94a3;
+  --white: #ffffff;
   --accent: #1db954;
   --action: #1a9143;
   --darkG: #166632;
@@ -150,8 +151,8 @@ select:focus, input:focus, textarea:focus {
 }
 
 .songs-toggle.active {
-  background: var(--bg);
-  color: var(--accent);
+
+  color: var(--white);
 }
 
 .songs-toggle.action {
@@ -169,7 +170,7 @@ select:focus, input:focus, textarea:focus {
   align-items: center;
   padding: 4px 8px;
   background: var(--surface);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
 
@@ -547,6 +548,9 @@ input[type="range"]::-moz-range-thumb {
   #player-view .np-seeks { flex-wrap: wrap; justify-content: center; }
   #track-list { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
   #target-grid { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); }
+  #app-header .header-signout {
+    display: none !important;
+  }
 }
 
 #player-view .np-progress {
@@ -749,6 +753,7 @@ input[type="range"]::-moz-range-thumb {
     padding: 12px 18px;
     gap: 10px;
     width: calc(100% + 28px);
+    height: 80px;
     margin: -14px -14px 16px -14px;
   }
 
@@ -759,7 +764,7 @@ input[type="range"]::-moz-range-thumb {
     justify-content: center;
     margin: 0;
     width: 100%;
-    height: 30px;
+    height:30px;
   }
 }
 
@@ -1293,7 +1298,7 @@ body.auth-mode #auth-box {
   padding: 8px 16px;
 
   color: var(--text);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--white);
   border-radius: var(--r-sm);
   font-size: 13px;
   font-weight: 600;
@@ -1656,10 +1661,7 @@ body.auth-mode #auth-box {
 #target-grid button.reordering {
   border-color: var(--action);
 }
-#target-grid button.reordering .grid-minus,
-#target-grid button.reordering .grid-sync {
-  display: none;
-}
+
 #target-grid .reorder-arrow {
   position: absolute;
   left: 50%;
@@ -1734,7 +1736,7 @@ body.auth-mode #auth-box {
   min-width: 40px;
   height: 32px;
   padding: 0;
-  background: var(--surface-2);
+  background: var(--muted);
   color: transparent;
   border: 1px solid var(--line);
   box-shadow: none;
@@ -1788,3 +1790,5 @@ body.auth-mode #auth-box {
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+#status-line.error { color: #ff6b6b; }
