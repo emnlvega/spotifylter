@@ -112,6 +112,7 @@ let dragStartY = 0;
 let dragPointerId = null;
 let justFinishedDrag = false;
 let reorderMode = false;
+let volumeShown = false;
 let paintTargetBar = () => {};
 let paintApiCounter = () => {};
 
@@ -1824,6 +1825,26 @@ async function openManualPlaylist(token) {
   });
 }
 
+async function seekRelative(deltaMs) {
+  if (!player) {
+    setFeedback("ERROR no player", true);
+    return;
+  }
+  try {
+    const state = await player.getCurrentState();
+    if (!state) {
+      setFeedback("ERROR no state", true);
+      return;
+    }
+    const max = state.duration || Infinity;
+    const target = Math.min(max - 1000, Math.max(0, state.position + deltaMs));
+    await player.seek(target);
+    document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.add("active"));
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+}
+
 async function seekCurrent(part) {
   if (!currentTrack) {
     setFeedback("ERROR no track", true);
@@ -2117,10 +2138,34 @@ function buildPlayer() {
   recentBtn.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i>';
   recentBtn.title = "Recently played";
   recentBtn.addEventListener("click", toggleRecentPanel);
+
+  const volumeBtn = document.createElement("button");
+  volumeBtn.type = "button";
+  volumeBtn.className = "np-shuffle";
+  const paintVolume = () => {
+    volumeBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+    volumeBtn.classList.toggle("active", volumeShown);
+    volumeBtn.title = volumeShown ? "Hide volume" : "Show volume";
+  };
+  paintVolume();
+  volumeBtn.addEventListener("click", () => {
+    volumeShown = !volumeShown;
+    volume.style.display = volumeShown ? "flex" : "none";
+    center.appendChild(volume);
+    paintVolume();
+  });
+
   center.appendChild(controls);
-  const seeks = document.createElement("div");
+    const seeks = document.createElement("div");
   seeks.className = "np-seeks";
-    const presetPill = document.createElement("div");
+
+  const back10 = document.createElement("button");
+  back10.type = "button";
+  back10.className = "np-preset-adj np-preset-back";
+  back10.title = "-10 seconds";
+  back10.addEventListener("click", () => seekRelative(-10000));
+
+  const presetPill = document.createElement("div");
   presetPill.className = "np-preset-pill";
   const presets = [["A", "1"], ["B", "2"], ["C", "3"], ["D", "4"], ["E", "5"]];
   const presetBtns = {};
@@ -2143,7 +2188,15 @@ function buildPlayer() {
     presetPill.appendChild(b);
   }
   paintPresets(null);
-  seeks.appendChild(presetPill);
+
+  const fwd10 = document.createElement("button");
+  fwd10.type = "button";
+  fwd10.className = "np-preset-adj np-preset-fwd";
+  fwd10.title = "+10 seconds";
+  fwd10.addEventListener("click", () => seekRelative(10000));
+
+  seeks.append(back10, presetPill, fwd10);
+  paintPresets(null);
     const rnd = document.createElement("button");
   rnd.type = "button";
   rnd.className = "np-shuffle";
@@ -2158,7 +2211,7 @@ function buildPlayer() {
     if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
     paintRnd();
   });
-  controls.append(prev, toggle, rnd, playAllBtn, recentBtn, next);
+  controls.append(prev, toggle, rnd, playAllBtn, recentBtn, volumeBtn, next);
   center.appendChild(seeks);
   const volume = document.createElement("div");
   volume.className = "np-volume";
@@ -3064,7 +3117,7 @@ async function boot() {
   const skipToggle = document.createElement("button");
   skipToggle.type = "button";
   skipToggle.className = "outline-btn";
-  skipToggle.innerHTML = '<i class="fa-solid fa-eye-slash"></i><span>Skip hides</span>';
+  skipToggle.innerHTML = '<i class="fa-solid fa-forward-step"></i><span>Skip hides</span>';
   const paintSkip = () => skipToggle.classList.toggle("on", hideOnSkip);
   paintSkip();
   skipToggle.addEventListener("click", () => {
