@@ -1,3 +1,4 @@
+const OFFLINE = false;
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
 const SYNC_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hidden";
@@ -26,7 +27,10 @@ const PLAYLISTS_CACHE_KEY = "sp_playlists_v1";
 const PLAYLISTS_TTL = 60 * 60 * 1000;
 
 const LOGO_SVG = '<svg viewBox="0 0 3994 1883" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1,0,0,1,-100.338058,-100.340635)"><g transform="matrix(4.166667,0,0,4.166667,0,0)"><path d="M202.186,109.034L150.19,109.034C149.678,109.034 149.172,108.991 148.675,108.907L148.675,119.385C148.675,135.561 135.561,148.675 119.385,148.675L109.034,148.675L109.034,185.994L445.465,185.994C460.482,185.994 472.498,197.219 472.498,210.855L472.498,289.145C472.498,302.781 460.482,314.006 445.465,314.006L432.857,314.006L432.857,351.325L443.208,351.325C459.385,351.325 472.498,364.438 472.498,380.615L472.498,443.207C472.498,459.384 459.385,472.498 443.208,472.498L380.615,472.498C364.439,472.498 351.325,459.384 351.325,443.207L351.325,432.488C350.494,432.73 349.637,432.856 348.76,432.856L301.234,432.856L301.234,451.057C301.234,464.693 289.218,475.918 274.201,475.918L54.535,475.918C39.518,475.918 27.502,464.693 27.502,451.057L27.502,372.767C27.502,359.131 39.518,347.905 54.535,347.905L274.201,347.905C289.218,347.905 301.234,359.131 301.234,372.767L301.234,390.966L348.76,390.966C349.637,390.966 350.494,391.092 351.325,391.334L351.325,380.615C351.325,364.438 364.439,351.325 380.615,351.325L390.967,351.325L390.967,314.006L51.115,314.006C36.097,314.006 24.081,302.781 24.081,289.145L24.081,210.855C24.081,197.219 36.097,185.994 51.115,185.994L67.143,185.994L67.143,148.675L56.792,148.675C40.615,148.675 27.502,135.561 27.502,119.385L27.502,56.792C27.502,40.616 40.615,27.502 56.792,27.502L119.385,27.502C135.561,27.502 148.675,40.616 148.675,56.792L148.675,67.27C149.172,67.186 149.678,67.143 150.19,67.143L202.186,67.143L202.186,48.943C202.186,35.307 214.202,24.082 229.22,24.082L448.885,24.082C463.903,24.082 475.919,35.307 475.919,48.943L475.919,127.233C475.919,140.869 463.903,152.095 448.885,152.095L229.22,152.095C214.202,152.095 202.186,140.869 202.186,127.233L202.186,109.034ZM119.385,52.647L56.792,52.647C54.503,52.647 52.647,54.503 52.647,56.792L52.647,119.385C52.647,121.674 54.503,123.53 56.792,123.53L119.385,123.53C121.674,123.53 123.529,121.674 123.529,119.385L123.529,56.792C123.529,54.503 121.674,52.647 119.385,52.647ZM443.208,376.47L380.615,376.47C378.326,376.47 376.471,378.326 376.471,380.615L376.471,443.207C376.471,445.497 378.326,447.352 380.615,447.352L443.208,447.352C445.497,447.352 447.353,445.497 447.353,443.207L447.353,380.615C447.353,378.326 445.497,376.47 443.208,376.47Z" fill="currentColor"/></g><g transform="matrix(1,0,0,1,-166.90289,0)"><path d="M2542.786,774.973L2542.786,633.728L2490.253,633.728C2427.681,633.728 2377.614,586.954 2377.614,530.137L2377.614,203.931C2377.614,147.114 2427.681,100.341 2490.253,100.341L4147.632,100.341C4210.204,100.341 4260.271,147.114 4260.271,203.931L4260.271,530.137C4260.271,586.954 4210.204,633.728 4147.632,633.728L2717.331,633.728L2717.331,774.973L3405.527,774.973C3468.099,774.973 3518.166,821.746 3518.166,878.564L3518.166,1204.77C3518.166,1261.587 3468.099,1308.36 3405.527,1308.36L2717.331,1308.36L2717.331,1455.923C2717.331,1458.595 2717.22,1461.239 2717.002,1463.852L2760.46,1463.852C2827.862,1463.852 2882.502,1518.491 2882.502,1585.894L2882.502,1846.698C2882.502,1914.1 2827.862,1968.741 2760.46,1968.741L2499.655,1968.741C2432.254,1968.741 2377.614,1914.1 2377.614,1846.698L2377.614,1585.894C2377.614,1518.491 2432.254,1463.852 2499.655,1463.852L2543.115,1463.852C2542.897,1461.239 2542.786,1458.595 2542.786,1455.923L2542.786,1308.36L2490.253,1308.36C2427.681,1308.36 2377.614,1261.587 2377.614,1204.77L2377.614,878.564C2377.614,821.746 2427.681,774.973 2490.253,774.973L2542.786,774.973ZM2760.46,1568.624L2499.655,1568.624C2490.118,1568.624 2482.387,1576.357 2482.387,1585.894L2482.387,1846.698C2482.387,1856.236 2490.118,1863.968 2499.655,1863.968L2760.46,1863.968C2769.998,1863.968 2777.73,1856.236 2777.73,1846.698L2777.73,1585.894C2777.73,1576.357 2769.998,1568.624 2760.46,1568.624Z" fill="currentColor"/></g></g></svg>';
-
+const inner = LOGO_SVG.slice(LOGO_SVG.indexOf('>') + 1, LOGO_SVG.lastIndexOf('</svg>'))
+  .replaceAll('fill="currentColor"', 'fill="#0a0d12" fill-opacity="0.15"');
+const pat = `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="20" width="160" height="160" rx="32" fill="#1e2530" fill-opacity="0"/></svg>`;
+document.documentElement.style.setProperty('--logo-pattern', `url("data:image/svg+xml,${encodeURIComponent(pat)}")`);
 const TOOLS = [
   { id: "manual",    icon: "fa-paste",        label: "Manual",    desc: "Paste track links" },
   { id: "combine",   icon: "fa-circle-plus",  label: "Combine",   desc: "Union, no duplicates" },
@@ -37,7 +41,7 @@ const TOOLS = [
 ];
 
 const PLAYLISTS = {
-  dscvry:               { id: "ERROR", label: "dscvry" },
+  "nu vygr":               { id: "ERROR", label: "nu vygr" },
   instnrcrush:          { id: "ERROR", label: "instnrcrush" },
   vygr:                 { id: "ERROR", label: "vygr" },
   "vygr + instnrcrush": { id: "ERROR", label: "vygr + instnrcrush" },
@@ -52,11 +56,11 @@ const PLAYLISTS = {
   flashbacks:           { id: "ERROR", label: "flashbacks" }
 };
 
-const SOURCE_CANDIDATES = ["dscvry", "vygr", "instnrcrush", "bynd", "gvlfbcktmsc", "lsyrslftdnc"];
+const SOURCE_CANDIDATES = ["nu vygr", "vygr", "instnrcrush", "bynd", "gvlfbcktmsc", "lsyrslftdnc"];
 const TARGET_GRID = ["vygr", "instnrcrush", "bynd", "nu disc", "electrnc", "wave", "hideout", "tieduprightnow", "flashbacks"];
 
 const RULES = {
-  dscvry:               [],
+  "nu vygr":               [],
   instnrcrush:          ["vygr + instnrcrush"],
   vygr:                 ["vygr + instnrcrush"],
   "vygr + instnrcrush": ["bynd"],
@@ -121,6 +125,18 @@ let volumeShown = false;
 let pendingQueue = [];
 let presetTracking = false;
 let lastPaintedPreset = null;
+let repeatMode = localStorage.getItem("sp_repeat") || "off";
+if (repeatMode === "one") repeatMode = "off";
+let previewMode = false;
+let previewRunning = false;
+let previewAbort = false;
+let npPanel = null;
+let npView = "queue";
+let endHandledFor = null;
+let previewSeconds = Number(localStorage.getItem("sp_preview_secs") || "5");
+let previewPresets = localStorage.getItem("sp_preview_presets") || "ABCDE";
+let previewHoldTimer = null;
+let previewLongPressed = false;
 let paintTargetBar = () => {};
 let paintApiCounter = () => {};
 
@@ -501,7 +517,7 @@ async function loadAll(token) {
 }
 
 function resolveTargets(selected) {
-  const targets = new Set(["dscvry"]);
+  const targets = new Set(["nu vygr"]);
   const stack = [selected];
   while (stack.length) {
     const node = stack.pop();
@@ -1819,6 +1835,13 @@ function updatePlayerBar(track) {
   resetPresets();
 }
 
+function handleEnd() {
+  const uri = currentPlayingUri();
+  if (!uri || endHandledFor === uri) return;
+  endHandledFor = uri;
+  if (repeatMode === "all") playAdjacent(1, false);
+}
+
 function onPlayerState(state) {
   const prev = lastState;
   lastState = state;
@@ -1851,8 +1874,18 @@ function onPlayerState(state) {
     ? prev.track_window.current_track.uri
     : null;
   if (sdkTrack && sdkTrack.uri !== prevUri) {
+    if (previewRunning && currentTrack && currentTrack.uri !== sdkTrack.uri) previewAbort = true;
     closeVersionsPanel();
     resetPresets();
+    endHandledFor = null;
+    if (previewMode) {
+      setTimeout(() => {
+        if (previewMode && !previewRunning) {
+          previewAbort = false;
+          runPreviewForCurrent();
+        }
+      }, 700);
+    }
   }
   if (sdkTrack) {
     const cachedHit = findCachedTrack(sdkTrack.uri);
@@ -1884,13 +1917,6 @@ function onPlayerState(state) {
   }
   const toggleIcon = document.querySelector("#player-view .np-toggle i");
   if (toggleIcon) toggleIcon.className = state.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
-  if (prev && prev.track_window && prev.track_window.current_track && !prev.paused && state.paused) {
-    const prevPos = prev.position + (state.timestamp - prev.timestamp);
-    const duration = (currentTrack && currentTrack.durationMs) || prev.duration || 0;
-    if (duration && prevPos >= duration - 2000 && state.position < 2000) {
-      playAdjacent(1, false);
-    }
-  }
   highlightTracks();
   startProgress(state);
   markGridHasTrack();
@@ -2017,7 +2043,7 @@ function pushRecent(track) {
     image: track.image,
     durationMs: track.durationMs
   });
-  localStorage.setItem("sp_recent", JSON.stringify(list.slice(0, 12)));
+  localStorage.setItem("sp_recent", JSON.stringify(list.slice(0, 8)));
   paintRecentGrid();
 }
 
@@ -2042,6 +2068,7 @@ function paintRecentGrid() {
     meta.innerHTML = `<p class="track-name"></p><p class="track-artists"></p>`;
     meta.querySelector(".track-name").textContent = t.name;
     meta.querySelector(".track-artists").textContent = t.artists;
+    
     card.append(img, meta);
     card.addEventListener("click", async () => {
       try {
@@ -2098,6 +2125,9 @@ function startProgress(state) {
     el.progress.style.width = (clamped / dur * 100) + "%";
     el.time.textContent = formatMs(clamped) + " / " + formatMs(dur);
     paintPresetsFromPosition(clamped, dur);
+    if (!lastState.paused && dur > 1000 && clamped >= dur - 300) {
+      handleEnd();
+    }
   };
   paint();
   if (!state.paused) progressTimer = setInterval(paint, 250);
@@ -2493,6 +2523,332 @@ function resetPresets() {
   document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.add("active"));
 }
 
+function paintRepeatButton() {
+  const btn = document.getElementById("np-repeat-btn");
+  if (!btn) return;
+  btn.classList.toggle("active", repeatMode === "all");
+  btn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+  btn.title = repeatMode === "all" ? "Repeat all" : "Repeat off";
+}
+
+function cycleRepeat() {
+  repeatMode = repeatMode === "all" ? "off" : "all";
+  localStorage.setItem("sp_repeat", repeatMode);
+  paintRepeatButton();
+  setFeedback("repeat " + repeatMode, false);
+}
+
+function togglePreviewMode() {
+  previewMode = !previewMode;
+  const btn = document.getElementById("np-preview-btn");
+  if (btn) btn.classList.toggle("active", previewMode);
+  const settings = document.getElementById("preview-settings");
+  if (settings) settings.remove();
+  if (!previewMode) {
+    previewAbort = true;
+    setFeedback("preview off", false);
+    return;
+  }
+  setFeedback("preview on · " + previewSeconds + "s · " + previewPresets, false);
+  runPreviewForCurrent();
+}
+
+async function previewAdvance() {
+  const name = sourceName();
+  const tracks = queueTracks(name);
+  if (!tracks.length || !currentTrack) return false;
+  let idx = tracks.findIndex(t => sameRecording(t, currentTrack));
+  if (idx === -1) idx = 0;
+  if (hideOnSkip && !playAll) setHidden(name, currentTrack.uri, true);
+  const candidate = tracks[(idx + 1) % tracks.length];
+  if (!candidate) return false;
+  try {
+    const token = await getToken();
+    const parts = previewPresets.split("").filter(p => "ABCDE".includes(p));
+    const firstPart = parts.length ? parts[0] : "A";
+    const startPos = previewPosition(candidate.durationMs, firstPart);
+    currentTrack = candidate;
+    updatePlayerBar(candidate);
+    await playFromGesture(candidate, token, startPos);
+    renderTracks();
+    highlightTracks();
+    const scheduledUri = candidate.uri;
+    setTimeout(() => {
+      if (!previewMode || previewRunning) return;
+      if (!currentTrack || currentTrack.uri !== scheduledUri) return;
+      previewAbort = false;
+      runPreviewForCurrent();
+    }, 500);
+    return true;
+  } catch (err) {
+    setFeedback(err.message, true);
+    return false;
+  }
+}
+
+async function previewWait(ms) {
+  const start = await player.getCurrentState();
+  if (!start) return false;
+  const targetPos = start.position + ms;
+  const dur = start.duration || Infinity;
+  while (true) {
+    if (previewAbort || !previewMode) return false;
+    try {
+      const s = await player.getCurrentState();
+      if (!s) return false;
+      if (s.track_window.current_track && currentTrack && s.track_window.current_track.uri !== currentTrack.uri) return false;
+      if (!s.paused && s.position >= targetPos) return true;
+      if (!s.paused && s.position >= dur - 200) return false;
+    } catch (_) {
+      return false;
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+}
+
+async function previewWaitUntil(targetMs, durationMs) {
+  let lastLog = 0;
+  while (true) {
+    if (previewAbort || !previewMode) {
+      console.log("[preview] wait abort", { previewAbort, previewMode });
+      return false;
+    }
+    try {
+      const s = await player.getCurrentState();
+      if (!s) {
+        await new Promise(r => setTimeout(r, 250));
+        continue;
+      }
+      if (!s.paused) {
+        if (s.position >= targetMs) {
+          console.log("[preview] wait reached", s.position, ">=", targetMs);
+          return true;
+        }
+        if (durationMs > 10000 && s.position >= durationMs - 500) {
+          console.log("[preview] wait near end", s.position, ">=", durationMs - 500);
+          return false;
+        }
+      }
+      const now = Date.now();
+      if (now - lastLog > 2000) {
+        console.log("[preview] wait poll", { pos: s.position, target: targetMs, paused: s.paused });
+        lastLog = now;
+      }
+    } catch (err) {
+      console.log("[preview] wait error", err.message);
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+}
+
+async function runPreviewForCurrent() {
+  if (!player || !currentTrack || previewRunning || !previewMode) {
+    console.log("[preview] start refused", { player: !!player, track: !!currentTrack, running: previewRunning, mode: previewMode });
+    return;
+  }
+  previewRunning = true;
+  previewAbort = false;
+  presetTracking = true;
+  lastPaintedPreset = null;
+  const startedUri = currentTrack.uri;
+  const durationMs = currentTrack.durationMs;
+  console.log("[preview] start", { uri: startedUri, durationMs });
+  const parts = previewPresets.split("").filter(p => "ABCDE".includes(p));
+  if (!parts.length) parts.push("A", "B", "C", "D", "E");
+  for (const part of parts) {
+    if (previewAbort || !previewMode || !currentTrack || currentTrack.uri !== startedUri) break;
+    const seekTo = previewPosition(durationMs, part);
+    const cur = await player.getCurrentState();
+    if (!(cur && Math.abs(cur.position - seekTo) < 1000)) {
+      await seekPreview(durationMs, part);
+    }
+    await new Promise(r => setTimeout(r, 300));
+    const ok = await previewWaitUntil(seekTo + previewSeconds * 1000, durationMs);
+    if (!ok) break;
+  }
+  presetTracking = false;
+  resetPresets();
+  const wasAborted = previewAbort || !previewMode;
+  previewAbort = false;
+  previewRunning = false;
+  console.log("[preview] end", { wasAborted, hasTrack: !!currentTrack, sameUri: currentTrack ? currentTrack.uri === startedUri : false });
+  if (previewMode && !wasAborted && currentTrack && currentTrack.uri === startedUri) {
+    try { await previewAdvance(); } catch (_) { /* handled inside */ }
+  }
+}
+
+function queueUpcoming(count) {
+  count = count || 8;
+  const name = sourceName();
+  if (shuffleOn) {
+    const tracks = playableTracks(name);
+    const byUri = new Map(tracks.map(t => [t.uri, t]));
+    const out = [];
+    for (const uri of shuffleQueue) {
+      const t = byUri.get(uri);
+      if (t && !out.some(o => o.uri === t.uri)) out.push(t);
+      if (out.length >= count) break;
+    }
+    return out;
+  }
+  const tracks = queueTracks(name);
+  if (!tracks.length) return [];
+  let idx = currentTrack ? tracks.findIndex(t => sameRecording(t, currentTrack)) : 0;
+  if (idx === -1) idx = 0;
+  const out = [];
+  for (let i = 1; i <= count && out.length < count && out.length < tracks.length - 1; i++) {
+    const next = tracks[(idx + i) % tracks.length];
+    if (next && !out.some(o => o.uri === next.uri)) out.push(next);
+  }
+  return out;
+}
+
+function paintNpGrid() {
+  if (!npPanel) return;
+  npPanel.innerHTML = "";
+
+  const header = document.createElement("div");
+  header.className = "np-grid-header";
+  const qBtn = document.createElement("button");
+  qBtn.type = "button";
+  qBtn.textContent = "Queue";
+  qBtn.classList.toggle("active", npView === "queue");
+  qBtn.addEventListener("click", () => { npView = "queue"; paintNpGrid(); });
+  const rBtn = document.createElement("button");
+  rBtn.type = "button";
+  rBtn.textContent = "Recent";
+  rBtn.classList.toggle("active", npView === "recent");
+  rBtn.addEventListener("click", () => { npView = "recent"; paintNpGrid(); });
+  header.append(qBtn, rBtn);
+  npPanel.appendChild(header);
+
+  const list = document.createElement("div");
+  list.className = "np-grid-list";
+  npPanel.appendChild(list);
+
+  const tracks = npView === "queue" ? queueUpcoming(8) : recentList();
+  if (!tracks.length) {
+    const empty = document.createElement("p");
+    empty.className = "recent-empty";
+    empty.textContent = npView === "queue" ? "Nothing queued" : "No recent songs";
+    list.appendChild(empty);
+    return;
+  }
+  for (const t of tracks) {
+    const card = document.createElement("div");
+    card.className = "track";
+    const img = document.createElement("img");
+    img.alt = "";
+    bindImg(img, t.image);
+    const meta = document.createElement("div");
+    meta.innerHTML = `<p class="track-name"></p><p class="track-artists"></p>`;
+    meta.querySelector(".track-name").textContent = t.name;
+    meta.querySelector(".track-artists").textContent = t.artists;
+    if (npView === "queue" && t === tracks[0]) {
+      const badge = document.createElement("span");
+      badge.className = "np-next-badge";
+      badge.textContent = "next";
+      card.appendChild(badge);
+    } else if (npView === "recent" && t === tracks[1]) {
+      const badge = document.createElement("span");
+      badge.className = "np-next-badge";
+      badge.textContent = "previous";
+      card.appendChild(badge);
+    }
+    card.append(img, meta);
+    card.addEventListener("click", async () => {
+      try {
+        const token = await getToken();
+        currentTrack = t;
+        await playFromGesture(t, token);
+        updatePlayerBar(t);
+        highlightTracks();
+        markGridHasTrack();
+        paintVersionsButton();
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
+    });
+    list.appendChild(card);
+  }
+}
+
+function toggleNpPanel() {
+  const btn = document.getElementById("np-queue-btn");
+  if (npPanel) {
+    npPanel.remove();
+    npPanel = null;
+    if (btn) btn.classList.remove("active");
+    return;
+  }
+  const view = document.getElementById("player-view");
+  if (!view) return;
+  npPanel = document.createElement("div");
+  npPanel.id = "np-grid";
+  view.appendChild(npPanel);
+  paintNpGrid();
+  if (btn) btn.classList.add("active");
+}
+
+function showPreviewSettings() {
+  const existing = document.getElementById("preview-settings");
+  if (existing) { existing.remove(); return; }
+  const center = document.querySelector("#player-view .np-center");
+  if (!center) return;
+
+  const panel = document.createElement("div");
+  panel.id = "preview-settings";
+  panel.className = "preview-settings";
+
+  const timeRow = document.createElement("div");
+  timeRow.className = "preview-setting-row";
+  const timeLabel = document.createElement("span");
+  timeLabel.textContent = "Time per preset";
+  const timeSlider = document.createElement("input");
+  timeSlider.type = "range";
+  timeSlider.min = "1";
+  timeSlider.max = "10";
+  timeSlider.step = "1";
+  timeSlider.value = String(previewSeconds);
+  const timeVal = document.createElement("span");
+  timeVal.className = "preview-setting-val";
+  timeVal.textContent = previewSeconds + "s";
+  timeSlider.addEventListener("input", () => {
+    previewSeconds = Number(timeSlider.value);
+    localStorage.setItem("sp_preview_secs", String(previewSeconds));
+    timeVal.textContent = previewSeconds + "s";
+  });
+  timeRow.append(timeLabel, timeSlider, timeVal);
+
+  const presetRow = document.createElement("div");
+  presetRow.className = "preview-setting-row";
+  const presetLabel = document.createElement("span");
+  presetLabel.textContent = "Presets";
+  const presetPill = document.createElement("div");
+  presetPill.className = "preview-preset-pill";
+  for (const part of ["A", "B", "C", "D", "E"]) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = part;
+    if (previewPresets.includes(part)) b.classList.add("on");
+    b.addEventListener("click", () => {
+      if (previewPresets.includes(part)) {
+        if (previewPresets.length <= 1) return;
+        previewPresets = previewPresets.replace(part, "");
+      } else {
+        previewPresets = (previewPresets + part).split("").sort().join("");
+      }
+      localStorage.setItem("sp_preview_presets", previewPresets);
+      b.classList.toggle("on");
+    });
+    presetPill.appendChild(b);
+  }
+  presetRow.append(presetLabel, presetPill);
+
+  panel.append(timeRow, presetRow);
+  center.appendChild(panel);
+}
+
 function buildPlayer() {
   let progressWrap = el.progress.parentElement;
   if (!progressWrap || progressWrap === el.bar) {
@@ -2602,13 +2958,55 @@ function buildPlayer() {
     }
   });
 
-  const recentBtn = document.createElement("button");
-  recentBtn.type = "button";
-  recentBtn.id = "np-recent-btn";
-  recentBtn.className = "np-shuffle";
-  recentBtn.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i>';
-  recentBtn.title = "Recently played";
-  recentBtn.addEventListener("click", toggleRecentPanel);
+  const queueBtn = document.createElement("button");
+  queueBtn.type = "button";
+  queueBtn.id = "np-queue-btn";
+  queueBtn.className = "np-shuffle";
+  queueBtn.innerHTML = '<i class="fa-solid fa-list-ul"></i>';
+  queueBtn.title = "Queue / Recent";
+  queueBtn.addEventListener("click", toggleNpPanel);
+
+  const repeatBtn = document.createElement("button");
+  repeatBtn.type = "button";
+  repeatBtn.id = "np-repeat-btn";
+  repeatBtn.className = "np-shuffle";
+  repeatBtn.addEventListener("click", cycleRepeat);
+  paintRepeatButton();
+
+  const previewBtn = document.createElement("button");
+  previewBtn.type = "button";
+  previewBtn.id = "np-preview-btn";
+  previewBtn.className = "np-shuffle";
+  previewBtn.innerHTML = '<i class="fa-solid fa-stopwatch"></i>';
+  previewBtn.title = "Preview";
+
+  previewBtn.addEventListener("pointerdown", () => {
+    previewLongPressed = false;
+    clearTimeout(previewHoldTimer);
+    previewHoldTimer = setTimeout(() => {
+      previewHoldTimer = null;
+      previewLongPressed = true;
+      if (navigator.vibrate) navigator.vibrate(30);
+      showPreviewSettings();
+    }, 500);
+  });
+  previewBtn.addEventListener("pointerup", () => {
+    if (previewHoldTimer) {
+      clearTimeout(previewHoldTimer);
+      previewHoldTimer = null;
+    }
+    if (previewLongPressed) {
+      previewLongPressed = false;
+      return;
+    }
+    togglePreviewMode();
+  });
+  previewBtn.addEventListener("pointercancel", () => {
+    clearTimeout(previewHoldTimer);
+    previewHoldTimer = null;
+    previewLongPressed = false;
+  });
+  previewBtn.addEventListener("contextmenu", ev => ev.preventDefault());
 
   const volumeBtn = document.createElement("button");
   volumeBtn.type = "button";
@@ -2682,7 +3080,7 @@ function buildPlayer() {
     if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
     paintRnd();
   });
-  controls.append(prev, toggle, rnd, recentBtn, volumeBtn, next);
+  controls.append(prev, toggle, rnd, queueBtn, repeatBtn, previewBtn, volumeBtn, next);
   center.appendChild(seeks);
   const volume = document.createElement("div");
   volume.className = "np-volume";
@@ -2707,6 +3105,7 @@ function buildPlayer() {
   const gridParent = el.grid && el.grid.parentElement;
   if (gridParent) gridParent.insertBefore(view, el.grid);
   else document.body.appendChild(view);
+  paintRepeatButton();
 }
 
 function applyPlayerScale(v) {
@@ -3536,6 +3935,13 @@ function installApiCounter() {
   window.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : (input && input.url) || "";
     const counted = url.indexOf("https://api.spotify.com/") === 0;
+    if (counted && OFFLINE) {
+      console.warn("[api] OFFLINE — blocked:", url);
+      return new Response(JSON.stringify({ error: { status: 503, message: "OFFLINE" } }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
     if (counted) apiLogPush();
     const res = await original(input, init);
     if (counted && res.status === 429) {
@@ -3570,6 +3976,52 @@ function buildApiCounter() {
   paintApiCounter = paint;
   setInterval(paint, 5000);
   return wrap;
+}
+
+function startOfflineSession() {
+  showApp();
+  setStatus("OFFLINE — UI preview");
+  const demo = [
+    { name: "nu vygr", tracks: 8 },
+    { name: "bynd", tracks: 6 },
+    { name: "hideout", tracks: 4 },
+    { name: "flashbacks", tracks: 5 }
+  ];
+  for (const key of Object.keys(PLAYLISTS)) delete PLAYLISTS[key];
+  SOURCE_CANDIDATES.length = 0;
+  const artists = ["Demo Artist", "Test Band", "Sample Name"];
+  for (const d of demo) {
+    PLAYLISTS[d.name] = { id: "offline_" + d.name, label: d.name, image: null };
+    SOURCE_CANDIDATES.push(d.name);
+    const tracks = [];
+    for (let i = 0; i < d.tracks; i++) {
+      tracks.push({
+        uri: "spotify:track:offline" + d.name + i,
+        name: d.name + " track " + (i + 1),
+        artists: artists[i % artists.length],
+        durationMs: 180000 + i * 7000,
+        image: null,
+        isrc: null
+      });
+    }
+    cache[d.name] = {
+      id: "offline_" + d.name,
+      label: d.name,
+      image: null,
+      loadedAt: Date.now(),
+      total: d.tracks,
+      snapshot_id: null,
+      tracks
+    };
+  }
+  localStorage.setItem(SOURCE_KEY, "nu vygr");
+  currentTrack = cache["nu vygr"].tracks[0];
+  updatePlayerBar(currentTrack);
+  renderGrid();
+  renderSourceGrid();
+  renderTracks();
+  highlightTracks();
+  paintVersionsButton();
 }
 
 async function boot() {
@@ -3908,6 +4360,7 @@ songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle, playAllBt
   });
   try {
     readCache();
+    if (OFFLINE) { startOfflineSession(); return; }
     document.addEventListener("visibilitychange", async () => {
       if (document.visibilityState !== "visible") return;
       try {
