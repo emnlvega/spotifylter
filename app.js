@@ -285,10 +285,12 @@ function openTrackContextMenu(x, y, track) {
       closeTrackContextMenu();
       document.removeEventListener("click", dismiss);
       document.removeEventListener("contextmenu", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
     };
     document.addEventListener("click", dismiss);
     document.addEventListener("contextmenu", dismiss);
-  }, 0);
+    window.addEventListener("scroll", dismiss, true);
+  }, 300);
 }
 
 async function playFromManualQueue(hide) {
@@ -1689,6 +1691,7 @@ function renderTracks() {
       ev.preventDefault();
       openTrackContextMenu(ev.clientX, ev.clientY, track);
     });
+    attachTrackTouchHold(card, track);
     card.addEventListener("click", async () => {
       try {
         changedPlayingNow()
@@ -3204,6 +3207,43 @@ function removeFromQueue(track) {
   }
   refreshNpPanel();
   setFeedback("removed from queue: " + track.name, false);
+}
+
+function attachTrackTouchHold(card, track) {
+  let holdTimer = null;
+  let isHolding = false;
+  card.addEventListener("pointerdown", ev => {
+    if (ev.button !== 0 || ev.target.closest(".track-unhide")) return;
+    isHolding = false;
+    holdTimer = setTimeout(() => {
+      isHolding = true;
+      if (navigator.vibrate) navigator.vibrate(30);
+      openTrackContextMenu(ev.clientX, ev.clientY, track);
+    }, 500);
+  });
+  card.addEventListener("pointerup", () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+  });
+  card.addEventListener("pointercancel", () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+  });
+  card.addEventListener("click", ev => {
+    if (isHolding) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      isHolding = false;
+    }
+  });
+  card.addEventListener("contextmenu", ev => {
+    ev.preventDefault();
+    openTrackContextMenu(ev.clientX, ev.clientY, track);
+  });
 }
 
 function attachQueueDrag(card, track, list) {
