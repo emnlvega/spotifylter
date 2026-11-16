@@ -1,15 +1,17 @@
 :root {
-  --bg: #0a0d12;
-  --surface: #141922;
-  --surface-2: #1b212c;
-  --line: #262e3a;
+  --bg: #080808;
+  --surface: #070708;
+  --surface-2: #0f1013;
+  --line: #182c1e;
   --text: #e8ecf2;
-  --muted: #8b94a3;
+  --muted: #48ac55;
   --white: #ffffff;
   --accent: #1db954;
   --action: #1a9143;
   --darkG: #166632;
-  --blackG: #06120a;
+  --blackG: #0e271b;
+  --yellow: #d29922;
+  --red: #da3633;
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 14px;
@@ -18,12 +20,12 @@
 }
 
 html {
-  background: #0a0d12;
+  background: var(--bg);
   overscroll-behavior-y: none;
 }
 
 body {
-  background: linear-gradient(45deg, #1a232e 0%, #0b0f15 60%, #1a232e 100%);
+  background: linear-gradient(45deg, var(--blackG) 0%, var(--bg) 25%, var(--bg) 75%, var(--blackG) 100%);
   background-attachment: fixed;
 }
 
@@ -78,8 +80,8 @@ button {
 }
 
 button:hover {
-  background: #232b38;
-  border-color: #33404f;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 
@@ -138,7 +140,7 @@ select:focus, input:focus, textarea:focus {
   min-height: 18px;
 }
 
-#feedback.error { color: #ff6b6b; }
+#feedback.error { color: var(--red); }
 
 .songs-row, .ui-toolbar {
   display: flex;
@@ -157,29 +159,25 @@ select:focus, input:focus, textarea:focus {
   padding: 8px 16px;
   border: none;
   border-radius: var(--r-sm);
-  background: var(--accent);
-  color: #06120a;
+  background: var(--blackG);
+  color: var(--accent);
   font-weight: 700;
   font-size: 13px;
   letter-spacing: .02em;
 }
 
 .songs-toggle:hover {
-  background: #24d461;
+  background: var(--accent);
 }
 
 .songs-toggle.active {
-
-  color: var(--white);
+  color: var(--blackG);
+  background: var(--accent);
 }
 
-.songs-toggle.action {
-  background: var(--action);
-  color: #ffffff;
-}
 
 .songs-toggle.action:hover {
-  background: #166632;
+  background: var(--darkG);
 }
 
 .zoom-group {
@@ -293,11 +291,11 @@ select:focus, input:focus, textarea:focus {
 
 #player-view .np-toggle {
   background: var(--accent);
-  color: #06120a;
+  color: var(--bg);
 }
 
 #player-view .np-toggle:hover {
-  background: #24d461;
+  background: var(--accent);
 }
 
 #player-view .np-seeks button {
@@ -308,13 +306,13 @@ select:focus, input:focus, textarea:focus {
 }
 
 #player-view .np-seeks button:hover {
-  background: #232b38;
+  background: var(--accent);
   border-color: var(--action);
-  color: #ffffff;
+  color: var(--white);
 }
 
 #player-view .np-controls .np-nav {
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
   border: 2px solid var(--accent);
   box-shadow: none;
@@ -349,7 +347,7 @@ select:focus, input:focus, textarea:focus {
   gap: 12px;
   align-content: start;
   padding: 10px;
-  background: var(--line);
+  background: var(--surface-2);
   border-radius: 8px;
   margin-top: 12px;
 }
@@ -372,7 +370,6 @@ select:focus, input:focus, textarea:focus {
 #track-list .track:hover {
   background: var(--surface-2);
   border-color: var(--line);
-  transform: translateY(-1px);
 }
 
 #track-list .track.current {
@@ -383,7 +380,7 @@ select:focus, input:focus, textarea:focus {
 #track-list .track.current .track-name,
 #track-list .track.current .track-artists,
 #track-list .track.current .track-dur {
-  color: #06120a;
+  color: var(--bg);
 }
 
 #track-list .track > div {
@@ -477,7 +474,6 @@ select:focus, input:focus, textarea:focus {
 #target-grid button:hover {
   background: var(--surface-2);
   border-color: var(--action);
-  transform: translateY(-1px);
 }
 
 #target-grid button.ok { border-color: var(--accent); }
@@ -596,7 +592,7 @@ input[type="range"]::-moz-range-thumb {
 #player-view .np-progress {
   width: 100%;
   height: 6px;
-  background: var(--line);
+  background: var(--blackG);
   border-radius: 3px;
   overflow: hidden;
   cursor: pointer;
@@ -615,9 +611,9 @@ input[type="range"]::-moz-range-thumb {
   justify-content: center;
 }
 #player-view .np-shuffle {
-  background: var(--surface-2);
-  color: var(--muted);
-  border: 1px solid var(--line);
+  background: var(--blackG);
+  color: var(--action);
+  border:1px solid var(--accent);
   box-shadow: none;
   min-width: 72px;
   padding: 14px 12px;
@@ -627,10 +623,14 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 800;
   transition: background var(--fast), color var(--fast);
 }
+
+#player-view .np-shuffle:hover {
+  background: var(--accent);
+}
+
 #player-view .np-shuffle.active {
-  background: #1a9143;
-  color: #ffffff;
-  border: none;
+  background: var(--accent);
+  color: var(--blackG);
 }
 
 #source-select {
@@ -702,12 +702,10 @@ input[type="range"]::-moz-range-thumb {
   border-right: none;
 }
 #player-view .np-preset-pill button.np-preset:hover {
-  background: #232b38;
-  color: var(--text);
+  background: var(--darkG);
 }
 #player-view .np-preset-pill button.np-preset.active {
-  background: #ffffff;
-  color: #0d1117;
+  background: var(--white);
 }
 
 .skip-toggle {
@@ -731,7 +729,7 @@ input[type="range"]::-moz-range-thumb {
 }
 .skip-toggle.on {
   background: var(--action);
-  color: #ffffff;
+  color: var(--white);
   border-color: transparent;
 }
 .skip-toggle.on:hover {
@@ -743,12 +741,12 @@ input[type="range"]::-moz-range-thumb {
   border-color: transparent;
 }
 #target-grid button.has-track span {
-  color: #06120a;
+  color: var(--bg);
   font-weight: 700;
 }
 #target-grid button.has-track .grid-minus {
   background: rgba(6, 18, 10, .7);
-  color: #ffffff;
+  color: var(--white);
 }
 
 #app-header {
@@ -757,7 +755,7 @@ input[type="range"]::-moz-range-thumb {
   gap: 14px;
   padding: 16px 24px;
   background: var(--accent);
-  color: #06120a;
+  color: var(--bg);
   width: calc(100% + 48px);
   margin: -24px -24px 20px -24px;
   box-sizing: border-box;
@@ -769,7 +767,7 @@ input[type="range"]::-moz-range-thumb {
   justify-content: center;
   width: 120px;
   height: 45px;
-  color: #06120a;
+  color: var(--bg);
   flex-shrink: 0;
 }
 #app-header .header-logo svg {
@@ -832,7 +830,7 @@ input[type="range"]::-moz-range-thumb {
   top: 0;
   z-index: 1;
   padding: 2px 0;
-  background: #0c1016;
+  background: var(--surface);
 }
 #track-list .songs-zoom button {
   padding: 2px 9px;
@@ -945,12 +943,12 @@ input[type="range"]::-moz-range-thumb {
 }
 .tool-create {
   background: var(--accent);
-  color: #06120a;
+  color: var(--bg);
   border: none;
   font-weight: 700;
 }
 .tool-create:hover {
-  background: #24d461;
+  background: var(--accent);
 }
 
 .hierarchy-toggle-row {
@@ -1050,12 +1048,12 @@ input[type="range"]::-moz-range-thumb {
 
 .ui-toolbar button[data-tool="tools"].hierarchy-on {
   background: var(--accent);
-  color: #06120a;
+  color: var(--bg);
   border-color: transparent;
 }
 
 body.auth-mode {
-  background: linear-gradient(165deg, #1ed760 0%, #1db954 45%, #0e6b2e 100%);
+  background: linear-gradient(165deg, var(--muted) 0%, var(--accent) 45%, var(--darkG) 100%);
   background-attachment: fixed;
   display: flex;
   align-items: center;
@@ -1181,7 +1179,7 @@ body.auth-mode #auth-box {
 
 #auth-box .auth-login {
   background: var(--accent);
-  color: #06120a;
+  color: var(--bg);
   border: none;
   font-weight: 800;
   padding: 14px;
@@ -1192,13 +1190,13 @@ body.auth-mode #auth-box {
   gap: 10px;
 }
 
-#auth-box .auth-login:hover { background: #06120a; }
+#auth-box .auth-login:hover { background: var(--bg); }
 
 #app-header .header-signout {
   margin: -16px -24px -16px 10px;
   align-self: stretch;
-  background: #0a0d12;
-  color: #ffffff;
+  background: var(--bg);
+  color: var(--white);
   border: none;
   border-radius: 0 0 0 0;
   font-weight: 700;
@@ -1208,7 +1206,7 @@ body.auth-mode #auth-box {
 
 #app-header .header-signout:hover {
   background: var(--white);
-  color: #06120a;
+  color: var(--bg);
   border-color: transparent;
 }
 
@@ -1291,15 +1289,15 @@ body.auth-mode #auth-box {
 .target-toggle.on {
   background: var(--action);
   border-color: transparent;
-  color: #ffffff;
+  color: var(--white);
 }
 .tool-tile.cascade-on {
   background: var(--accent);
   border-color: transparent;
-  color: #06120a;
+  color: var(--bg);
 }
 .tool-tile.cascade-on i {
-  color: #06120a;
+  color: var(--bg);
 }
 
 .target-bar #status-line {
@@ -1340,23 +1338,24 @@ body.auth-mode #auth-box {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  background: var(--blackG);
   padding: 8px 16px;
-
-  color: var(--text);
-  border: 1px solid var(--white);
+  color: var(--accent);
+  border: 1px solid var(--blackG);
   border-radius: var(--r-sm);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: .02em;
   cursor: pointer;
-  transition: color var(--fast), background var(--fast), border-color var(--fast);
 }
 .outline-btn:hover {
   color: var(--accent);
+  background: var(--blackG);
   border-color: var(--accent);
 }
 .outline-btn.on {
   background: var(--accent);
+  color: var(--white);
 }
 
 .songs-panel {
@@ -1415,18 +1414,18 @@ body.auth-mode #auth-box {
   padding: 5px 10px;
   border-radius: 999px;
   background: rgba(6, 18, 10, .15);
-  color: #06120a;
+  color: var(--bg);
   font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: .02em;
   cursor: default;
 }
-.api-pill.warn { background: #facc15; color: #1a1a1a; }
-.api-pill.danger { background: #dc2626; color: #ffffff; }
+.api-pill.warn { background: var(--yellow); color: var(--bg); }
+.api-pill.danger { background: var(--red); color: var(--white); }
 .api-pill.hold {
-  background: #7f1d1d;
-  color: #fee2e2;
+  background: var(--bg);
+  color: var(--white);
   animation: api-pulse 1.2s ease-in-out infinite;
 }
 @keyframes api-pulse {
@@ -1530,12 +1529,12 @@ body.auth-mode #auth-box {
   justify-content: center;
   border-radius: 50%;
   background: var(--action);
-  color: #ffffff;
+  color: var(--white);
   border: none;
   font-size: 12px;
 }
 .version-play:hover {
-  background: #6180ff;
+  background: var(--action);
 }
 .versions-close {
   margin-top: 4px;
@@ -1718,7 +1717,7 @@ body.auth-mode #auth-box {
   justify-content: center;
   border-radius: 50%;
   background: var(--action);
-  color: #ffffff;
+  color: var(--white);
   font-size: 12px;
   cursor: pointer;
   z-index: 3;
@@ -1856,13 +1855,13 @@ body.auth-mode #auth-box {
   font-size: 12px;
   font-weight: 600;
   border-radius: var(--r-sm);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border: 1px solid transparent;
   color: var(--muted);
 }
 .np-grid-header button.active {
   background: var(--accent);
-  color: #06120a;
+  color: var(--bg);
   border-color: transparent;
 }
 .np-grid-list {
@@ -1879,7 +1878,7 @@ body.auth-mode #auth-box {
   gap: 6px;
   padding: 6px;
   border-radius: var(--r-md);
-  background: var(--surface);
+  background: var(--surface-2);
   border: 1px solid transparent;
   cursor: pointer;
   overflow: hidden;
@@ -1941,7 +1940,7 @@ body.auth-mode #auth-box {
   padding: 2px 5px;
   border-radius: 4px;
   background: var(--accent);
-  color: #06120a;
+  color: var(--bg);
   z-index: 2;
 }
 

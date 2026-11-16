@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.18d"
+const VERSION_NUMBER = "v1.19"
 const OFFLINE = false;
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -30,8 +30,8 @@ const LOCAL_PLAYLISTS_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/l
 
 const LOGO_SVG = '<svg viewBox="0 0 3994 1883" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1,0,0,1,-100.338058,-100.340635)"><g transform="matrix(4.166667,0,0,4.166667,0,0)"><path d="M202.186,109.034L150.19,109.034C149.678,109.034 149.172,108.991 148.675,108.907L148.675,119.385C148.675,135.561 135.561,148.675 119.385,148.675L109.034,148.675L109.034,185.994L445.465,185.994C460.482,185.994 472.498,197.219 472.498,210.855L472.498,289.145C472.498,302.781 460.482,314.006 445.465,314.006L432.857,314.006L432.857,351.325L443.208,351.325C459.385,351.325 472.498,364.438 472.498,380.615L472.498,443.207C472.498,459.384 459.385,472.498 443.208,472.498L380.615,472.498C364.439,472.498 351.325,459.384 351.325,443.207L351.325,432.488C350.494,432.73 349.637,432.856 348.76,432.856L301.234,432.856L301.234,451.057C301.234,464.693 289.218,475.918 274.201,475.918L54.535,475.918C39.518,475.918 27.502,464.693 27.502,451.057L27.502,372.767C27.502,359.131 39.518,347.905 54.535,347.905L274.201,347.905C289.218,347.905 301.234,359.131 301.234,372.767L301.234,390.966L348.76,390.966C349.637,390.966 350.494,391.092 351.325,391.334L351.325,380.615C351.325,364.438 364.439,351.325 380.615,351.325L390.967,351.325L390.967,314.006L51.115,314.006C36.097,314.006 24.081,302.781 24.081,289.145L24.081,210.855C24.081,197.219 36.097,185.994 51.115,185.994L67.143,185.994L67.143,148.675L56.792,148.675C40.615,148.675 27.502,135.561 27.502,119.385L27.502,56.792C27.502,40.616 40.615,27.502 56.792,27.502L119.385,27.502C135.561,27.502 148.675,40.616 148.675,56.792L148.675,67.27C149.172,67.186 149.678,67.143 150.19,67.143L202.186,67.143L202.186,48.943C202.186,35.307 214.202,24.082 229.22,24.082L448.885,24.082C463.903,24.082 475.919,35.307 475.919,48.943L475.919,127.233C475.919,140.869 463.903,152.095 448.885,152.095L229.22,152.095C214.202,152.095 202.186,140.869 202.186,127.233L202.186,109.034ZM119.385,52.647L56.792,52.647C54.503,52.647 52.647,54.503 52.647,56.792L52.647,119.385C52.647,121.674 54.503,123.53 56.792,123.53L119.385,123.53C121.674,123.53 123.529,121.674 123.529,119.385L123.529,56.792C123.529,54.503 121.674,52.647 119.385,52.647ZM443.208,376.47L380.615,376.47C378.326,376.47 376.471,378.326 376.471,380.615L376.471,443.207C376.471,445.497 378.326,447.352 380.615,447.352L443.208,447.352C445.497,447.352 447.353,445.497 447.353,443.207L447.353,380.615C447.353,378.326 445.497,376.47 443.208,376.47Z" fill="currentColor"/></g><g transform="matrix(1,0,0,1,-166.90289,0)"><path d="M2542.786,774.973L2542.786,633.728L2490.253,633.728C2427.681,633.728 2377.614,586.954 2377.614,530.137L2377.614,203.931C2377.614,147.114 2427.681,100.341 2490.253,100.341L4147.632,100.341C4210.204,100.341 4260.271,147.114 4260.271,203.931L4260.271,530.137C4260.271,586.954 4210.204,633.728 4147.632,633.728L2717.331,633.728L2717.331,774.973L3405.527,774.973C3468.099,774.973 3518.166,821.746 3518.166,878.564L3518.166,1204.77C3518.166,1261.587 3468.099,1308.36 3405.527,1308.36L2717.331,1308.36L2717.331,1455.923C2717.331,1458.595 2717.22,1461.239 2717.002,1463.852L2760.46,1463.852C2827.862,1463.852 2882.502,1518.491 2882.502,1585.894L2882.502,1846.698C2882.502,1914.1 2827.862,1968.741 2760.46,1968.741L2499.655,1968.741C2432.254,1968.741 2377.614,1914.1 2377.614,1846.698L2377.614,1585.894C2377.614,1518.491 2432.254,1463.852 2499.655,1463.852L2543.115,1463.852C2542.897,1461.239 2542.786,1458.595 2542.786,1455.923L2542.786,1308.36L2490.253,1308.36C2427.681,1308.36 2377.614,1261.587 2377.614,1204.77L2377.614,878.564C2377.614,821.746 2427.681,774.973 2490.253,774.973L2542.786,774.973ZM2760.46,1568.624L2499.655,1568.624C2490.118,1568.624 2482.387,1576.357 2482.387,1585.894L2482.387,1846.698C2482.387,1856.236 2490.118,1863.968 2499.655,1863.968L2760.46,1863.968C2769.998,1863.968 2777.73,1856.236 2777.73,1846.698L2777.73,1585.894C2777.73,1576.357 2769.998,1568.624 2760.46,1568.624Z" fill="currentColor"/></g></g></svg>';
 const inner = LOGO_SVG.slice(LOGO_SVG.indexOf('>') + 1, LOGO_SVG.lastIndexOf('</svg>'))
-  .replaceAll('fill="currentColor"', 'fill="#0a0d12" fill-opacity="0.15"');
-const pat = `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="20" width="160" height="160" rx="32" fill="#1e2530" fill-opacity="0"/></svg>`;
+  .replaceAll('fill="currentColor"', 'fill="var(--blackG)" fill-opacity="0.15"');
+const pat = `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="20" width="160" height="160" rx="32" fill="var(--blackG)" fill-opacity="0"/></svg>`;
 document.documentElement.style.setProperty('--logo-pattern', `url("data:image/svg+xml,${encodeURIComponent(pat)}")`);
 const TOOLS = [
   { id: "manual",    icon: "fa-paste",        label: "Manual",    desc: "Paste track links" },
@@ -84,7 +84,7 @@ const GRID_HIDE_KEY = "sp_grid_hidden";
 const EXTRA_SOURCES = { "discover weekly": "37i9dQZEVXcHuSzt0MWVeH" };
 const SOURCE_KEY = "sp_source";
 const PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="#2a3140"/></svg>'
+  '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="var(--blackG)"/></svg>'
 );
 const API_LOG_KEY = "sp_api_log";
 const API_HOLD_KEY = "sp_api_hold";
@@ -148,9 +148,9 @@ function showAppDialog({ type = "change", isQuestion = false, title = "", text =
   if (existing) existing.remove();
 
   const outlineColors = {
-    add: "#1db954",
-    delete: "#da3633",
-    change: "#d29922"
+    add: "var(--accent)",
+    delete: "var(--red)",
+    change: "var(--yellow)"
   };
   const borderColor = outlineColors[type] || outlineColors.change;
   const defTitles = { add: "Confirm Add", delete: "Confirm Delete", change: "Notice" };
@@ -164,12 +164,12 @@ function showAppDialog({ type = "change", isQuestion = false, title = "", text =
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(10,13,18,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
 
   const box = document.createElement("div");
-  box.style.cssText = "background:#141922;border:1px solid " + borderColor + ";border-radius:14px;width:min(400px,90vw);padding:20px;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 24px rgba(0,0,0,0.5);color:#e8ecf2;position:relative;font-family:inherit;";
+  box.style.cssText = "background:var(--surface);border:1px solid " + borderColor + ";border-radius:var(--r-lg);width:min(400px,90vw);padding:20px;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 24px rgba(0,0,0,0.5);color:var(--text);position:relative;font-family:inherit;";
 
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
   closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-  closeBtn.style.cssText = "position:absolute;top:14px;right:14px;background:transparent;border:none;color:#8b94a3;font-size:16px;cursor:pointer;padding:4px;";
+  closeBtn.style.cssText = "position:absolute;top:14px;right:14px;background:transparent;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px;";
   closeBtn.addEventListener("click", () => {
     overlay.remove();
     if (onCancel) onCancel();
@@ -177,11 +177,11 @@ function showAppDialog({ type = "change", isQuestion = false, title = "", text =
 
   const h3 = document.createElement("h3");
   h3.textContent = finalTitle;
-  h3.style.cssText = "margin:0;font-size:16px;font-weight:600;color:#e8ecf2;padding-right:24px;";
+  h3.style.cssText = "margin:0;font-size:16px;font-weight:600;color:var(--text);padding-right:24px;";
 
   const p = document.createElement("p");
   p.textContent = finalText;
-  p.style.cssText = "margin:0;font-size:13px;color:#8b94a3;line-height:1.4;";
+  p.style.cssText = "margin:0;font-size:13px;color:var(--muted);line-height:1.4;";
 
   const actions = document.createElement("div");
   actions.style.cssText = "display:flex;gap:10px;justify-content:flex-end;margin-top:4px;";
@@ -190,7 +190,7 @@ function showAppDialog({ type = "change", isQuestion = false, title = "", text =
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
     cancelBtn.textContent = "Cancel";
-    cancelBtn.style.cssText = "background:#1b212c;color:#e8ecf2;border:1px solid #262e3a;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;";
+    cancelBtn.style.cssText = "background:var(--surface-2);color:var(--text);border:1px solid var(--line);padding:8px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:500;cursor:pointer;";
     cancelBtn.addEventListener("click", () => {
       overlay.remove();
       if (onCancel) onCancel();
@@ -199,7 +199,7 @@ function showAppDialog({ type = "change", isQuestion = false, title = "", text =
     const confirmBtn = document.createElement("button");
     confirmBtn.type = "button";
     confirmBtn.textContent = "Confirm";
-    confirmBtn.style.cssText = "background:" + (type === "delete" ? "#da3633" : type === "add" ? "#1db954" : "#262e3a") + ";color:#ffffff;border:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;";
+    confirmBtn.style.cssText = "background:" + (type === "delete" ? "var(--red)" : type === "add" ? "var(--accent)" : "var(--line)") + ";color:var(--white);border:none;padding:8px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:500;cursor:pointer;";
     confirmBtn.addEventListener("click", () => {
       overlay.remove();
       if (onConfirm) onConfirm();
@@ -210,7 +210,7 @@ function showAppDialog({ type = "change", isQuestion = false, title = "", text =
     const okBtn = document.createElement("button");
     okBtn.type = "button";
     okBtn.textContent = "OK";
-    okBtn.style.cssText = "background:#1b212c;color:#e8ecf2;border:1px solid #262e3a;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;";
+    okBtn.style.cssText = "background:var(--surface-2);color:var(--text);border:1px solid var(--line);padding:8px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:500;cursor:pointer;";
     okBtn.addEventListener("click", () => {
       overlay.remove();
       if (onConfirm) onConfirm();
@@ -229,7 +229,6 @@ function showAppDialog({ type = "change", isQuestion = false, title = "", text =
     }
   });
 }
-
 function currentPlayingUri() {
   if (pendingTrackUri) return pendingTrackUri;
   const sdkUri = lastState && lastState.track_window && lastState.track_window.current_track
@@ -1156,7 +1155,7 @@ function renderSourceGrid() {
       const badge = document.createElement("span");
       badge.className = "local-badge";
       badge.textContent = "local";
-      badge.style.cssText = "font-size:10px;background:#30363d;color:#8b949e;padding:1px 4px;border-radius:4px;margin-left:6px;vertical-align:middle;";
+      badge.style.cssText = "font-size:10px;background:var(--line);color:var(--muted);padding:1px 4px;border-radius:var(--r-sm);margin-left:6px;vertical-align:middle;";
       label.appendChild(badge);
     }
     
@@ -1168,7 +1167,7 @@ function renderSourceGrid() {
       minus.setAttribute("role", "button");
       minus.textContent = "-";
       minus.title = "Delete local playlist";
-      minus.style.cssText = "position:absolute;top:6px;left:6px;z-index:2;background:rgba(38,46,58,0.5);border:none;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#e8ecf2;font-weight:bold;cursor:pointer;";
+      minus.style.cssText = "position:absolute;top:6px;left:6px;z-index:2;background:rgba(10,13,18,0.8);border:none;width:22px;height:22px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:bold;cursor:pointer;";
       btn.style.position = "relative";
       minus.addEventListener("click", async ev => {
         ev.stopPropagation();
@@ -2532,23 +2531,25 @@ function parseTrackIds(text) {
 
 async function openManualPlaylist(token) {
   const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:1000;";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(10,13,18,0.8);display:flex;align-items:center;justify-content:center;z-index:1000;";
   const box = document.createElement("div");
-  box.style.cssText = "background:#1b2029;padding:16px;border-radius:8px;width:min(520px,90vw);display:flex;flex-direction:column;gap:8px;";
+  box.style.cssText = "background:var(--surface);padding:20px;border-radius:var(--r-md);width:min(520px,90vw);display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,0.5);color:var(--text);";
   const title = document.createElement("p");
   title.textContent = "Paste Spotify track links";
-  title.style.cssText = "margin:0;font-weight:600;";
+  title.style.cssText = "margin:0;font-weight:600;color:var(--text);font-size:16px;";
   const area = document.createElement("textarea");
   area.rows = 10;
-  area.style.cssText = "width:100%;resize:vertical;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:8px;font-family:monospace;font-size:12px;";
+  area.style.cssText = "width:100%;resize:vertical;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px;font-family:monospace;font-size:12px;outline:none;";
   const row = document.createElement("div");
-  row.style.cssText = "display:flex;gap:8px;justify-content:flex-end;";
+  row.style.cssText = "display:flex;gap:10px;justify-content:flex-end;";
   const cancel = document.createElement("button");
   cancel.type = "button";
   cancel.textContent = "Cancel";
+  cancel.style.cssText = "background:var(--surface-2);color:var(--text);border:1px solid var(--line);padding:8px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:500;cursor:pointer;";
   const create = document.createElement("button");
   create.type = "button";
   create.textContent = "Create";
+  create.style.cssText = "background:var(--accent);color:var(--blackG);border:none;padding:8px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:700;cursor:pointer;";
   row.append(cancel, create);
   box.append(title, area, row);
   overlay.appendChild(box);
@@ -3991,7 +3992,7 @@ async function openLocalPlaylistTool(token) {
     h3.textContent = "Create Local Playlist";
     const close = document.createElement("button");
     close.type = "button";
-    close.className = "tool-close";
+    close.className = "tool-close outline-btn";
     close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
     close.addEventListener("click", () => panel.remove());
     head.append(h3, close);
@@ -4012,7 +4013,7 @@ async function openLocalPlaylistTool(token) {
 
     const area = document.createElement("textarea");
     area.rows = 10;
-    area.style.cssText = "width:100%;resize:vertical;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:8px;font-family:monospace;font-size:12px;";
+    area.style.cssText = "width:100%;resize:vertical;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px;font-family:monospace;font-size:12px;outline:none;";
     area.placeholder = "https://open.spotify.com/track/...";
     panel.appendChild(area);
 
