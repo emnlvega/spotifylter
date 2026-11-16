@@ -9,6 +9,7 @@
   --accent: #1db954;
   --action: #1a9143;
   --darkG: #166632;
+  --blackG: #06120a;
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 14px;
@@ -875,6 +876,7 @@ input[type="range"]::-moz-range-thumb {
   border-radius: var(--r-md);
   display: flex;
   flex-direction: column;
+  order: -1;
   gap: 12px;
   max-width: 520px;
 }

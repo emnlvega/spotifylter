@@ -1,3 +1,4 @@
+const VERSION_NUMBER = "v1.18"
 const OFFLINE = false;
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -25,6 +26,7 @@ const ME_KEY = "sp_me_v1";
 const ME_TTL = 60 * 60 * 1000;
 const PLAYLISTS_CACHE_KEY = "sp_playlists_v1";
 const PLAYLISTS_TTL = 60 * 60 * 1000;
+const LOCAL_PLAYLISTS_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/localplaylists";
 
 const LOGO_SVG = '<svg viewBox="0 0 3994 1883" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(1,0,0,1,-100.338058,-100.340635)"><g transform="matrix(4.166667,0,0,4.166667,0,0)"><path d="M202.186,109.034L150.19,109.034C149.678,109.034 149.172,108.991 148.675,108.907L148.675,119.385C148.675,135.561 135.561,148.675 119.385,148.675L109.034,148.675L109.034,185.994L445.465,185.994C460.482,185.994 472.498,197.219 472.498,210.855L472.498,289.145C472.498,302.781 460.482,314.006 445.465,314.006L432.857,314.006L432.857,351.325L443.208,351.325C459.385,351.325 472.498,364.438 472.498,380.615L472.498,443.207C472.498,459.384 459.385,472.498 443.208,472.498L380.615,472.498C364.439,472.498 351.325,459.384 351.325,443.207L351.325,432.488C350.494,432.73 349.637,432.856 348.76,432.856L301.234,432.856L301.234,451.057C301.234,464.693 289.218,475.918 274.201,475.918L54.535,475.918C39.518,475.918 27.502,464.693 27.502,451.057L27.502,372.767C27.502,359.131 39.518,347.905 54.535,347.905L274.201,347.905C289.218,347.905 301.234,359.131 301.234,372.767L301.234,390.966L348.76,390.966C349.637,390.966 350.494,391.092 351.325,391.334L351.325,380.615C351.325,364.438 364.439,351.325 380.615,351.325L390.967,351.325L390.967,314.006L51.115,314.006C36.097,314.006 24.081,302.781 24.081,289.145L24.081,210.855C24.081,197.219 36.097,185.994 51.115,185.994L67.143,185.994L67.143,148.675L56.792,148.675C40.615,148.675 27.502,135.561 27.502,119.385L27.502,56.792C27.502,40.616 40.615,27.502 56.792,27.502L119.385,27.502C135.561,27.502 148.675,40.616 148.675,56.792L148.675,67.27C149.172,67.186 149.678,67.143 150.19,67.143L202.186,67.143L202.186,48.943C202.186,35.307 214.202,24.082 229.22,24.082L448.885,24.082C463.903,24.082 475.919,35.307 475.919,48.943L475.919,127.233C475.919,140.869 463.903,152.095 448.885,152.095L229.22,152.095C214.202,152.095 202.186,140.869 202.186,127.233L202.186,109.034ZM119.385,52.647L56.792,52.647C54.503,52.647 52.647,54.503 52.647,56.792L52.647,119.385C52.647,121.674 54.503,123.53 56.792,123.53L119.385,123.53C121.674,123.53 123.529,121.674 123.529,119.385L123.529,56.792C123.529,54.503 121.674,52.647 119.385,52.647ZM443.208,376.47L380.615,376.47C378.326,376.47 376.471,378.326 376.471,380.615L376.471,443.207C376.471,445.497 378.326,447.352 380.615,447.352L443.208,447.352C445.497,447.352 447.353,445.497 447.353,443.207L447.353,380.615C447.353,378.326 445.497,376.47 443.208,376.47Z" fill="currentColor"/></g><g transform="matrix(1,0,0,1,-166.90289,0)"><path d="M2542.786,774.973L2542.786,633.728L2490.253,633.728C2427.681,633.728 2377.614,586.954 2377.614,530.137L2377.614,203.931C2377.614,147.114 2427.681,100.341 2490.253,100.341L4147.632,100.341C4210.204,100.341 4260.271,147.114 4260.271,203.931L4260.271,530.137C4260.271,586.954 4210.204,633.728 4147.632,633.728L2717.331,633.728L2717.331,774.973L3405.527,774.973C3468.099,774.973 3518.166,821.746 3518.166,878.564L3518.166,1204.77C3518.166,1261.587 3468.099,1308.36 3405.527,1308.36L2717.331,1308.36L2717.331,1455.923C2717.331,1458.595 2717.22,1461.239 2717.002,1463.852L2760.46,1463.852C2827.862,1463.852 2882.502,1518.491 2882.502,1585.894L2882.502,1846.698C2882.502,1914.1 2827.862,1968.741 2760.46,1968.741L2499.655,1968.741C2432.254,1968.741 2377.614,1914.1 2377.614,1846.698L2377.614,1585.894C2377.614,1518.491 2432.254,1463.852 2499.655,1463.852L2543.115,1463.852C2542.897,1461.239 2542.786,1458.595 2542.786,1455.923L2542.786,1308.36L2490.253,1308.36C2427.681,1308.36 2377.614,1261.587 2377.614,1204.77L2377.614,878.564C2377.614,821.746 2427.681,774.973 2490.253,774.973L2542.786,774.973ZM2760.46,1568.624L2499.655,1568.624C2490.118,1568.624 2482.387,1576.357 2482.387,1585.894L2482.387,1846.698C2482.387,1856.236 2490.118,1863.968 2499.655,1863.968L2760.46,1863.968C2769.998,1863.968 2777.73,1856.236 2777.73,1846.698L2777.73,1585.894C2777.73,1576.357 2769.998,1568.624 2760.46,1568.624Z" fill="currentColor"/></g></g></svg>';
 const inner = LOGO_SVG.slice(LOGO_SVG.indexOf('>') + 1, LOGO_SVG.lastIndexOf('</svg>'))
@@ -37,7 +39,8 @@ const TOOLS = [
   { id: "subtract",  icon: "fa-circle-minus", label: "Subtract",  desc: "Origin minus selected" },
   { id: "intersect", icon: "fa-circle-nodes", label: "Intersect", desc: "Only songs in all selected" },
   { id: "dedupe",    icon: "fa-clone",        label: "Dedupe",    desc: "Copy without duplicates" },
-  { id: "hierarchy", icon: "fa-sitemap", label: "Hierarchy", desc: "Auto-add to linked playlists" }
+  { id: "hierarchy", icon: "fa-sitemap", label: "Hierarchy", desc: "Auto-add to linked playlists" },
+  { id: "localplaylist", icon: "fa-folder-plus", label: "Local", desc: "Paste tracks and save locally on Wix" }
 ];
 
 const PLAYLISTS = {
@@ -105,7 +108,7 @@ let hideOnSkip = localStorage.getItem("sp_hide_on_skip") !== "0";
 let pendingTrackUri = null;
 let pendingTrackUriAt = 0;
 let sdkStaleUri = null;
-let sourcesCollapsed = localStorage.getItem("sp_sources_collapsed") === "1";
+let sourcesCollapsed = true;
 let toolsCollapsed = localStorage.getItem("sp_tools_collapsed") !== "0";
 let playAll = localStorage.getItem("sp_play_all") === "1";
 let reverseOrder = localStorage.getItem("sp_reverse") === "1";
@@ -139,6 +142,93 @@ let previewHoldTimer = null;
 let previewLongPressed = false;
 let paintTargetBar = () => {};
 let paintApiCounter = () => {};
+
+function showAppDialog({ type = "change", isQuestion = false, title = "", text = "", onConfirm = null, onCancel = null } = {}) {
+  const existing = document.getElementById("app-custom-dialog");
+  if (existing) existing.remove();
+
+  const outlineColors = {
+    add: "#1db954",
+    delete: "#da3633",
+    change: "#d29922"
+  };
+  const borderColor = outlineColors[type] || outlineColors.change;
+  const defTitles = { add: "Confirm Add", delete: "Confirm Delete", change: "Notice" };
+  const defTexts = { add: "Do you want to proceed with adding this?", delete: "Are you sure you want to delete this?", text: "Please review this action." };
+
+  const finalTitle = title || defTitles[type] || "Notice";
+  const finalText = text || defTexts[type] || "";
+
+  const overlay = document.createElement("div");
+  overlay.id = "app-custom-dialog";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(10,13,18,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
+
+  const box = document.createElement("div");
+  box.style.cssText = "background:#141922;border:1px solid " + borderColor + ";border-radius:14px;width:min(400px,90vw);padding:20px;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 24px rgba(0,0,0,0.5);color:#e8ecf2;position:relative;font-family:inherit;";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  closeBtn.style.cssText = "position:absolute;top:14px;right:14px;background:transparent;border:none;color:#8b94a3;font-size:16px;cursor:pointer;padding:4px;";
+  closeBtn.addEventListener("click", () => {
+    overlay.remove();
+    if (onCancel) onCancel();
+  });
+
+  const h3 = document.createElement("h3");
+  h3.textContent = finalTitle;
+  h3.style.cssText = "margin:0;font-size:16px;font-weight:600;color:#e8ecf2;padding-right:24px;";
+
+  const p = document.createElement("p");
+  p.textContent = finalText;
+  p.style.cssText = "margin:0;font-size:13px;color:#8b94a3;line-height:1.4;";
+
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:10px;justify-content:flex-end;margin-top:4px;";
+
+  if (isQuestion) {
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.style.cssText = "background:#1b212c;color:#e8ecf2;border:1px solid #262e3a;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;";
+    cancelBtn.addEventListener("click", () => {
+      overlay.remove();
+      if (onCancel) onCancel();
+    });
+
+    const confirmBtn = document.createElement("button");
+    confirmBtn.type = "button";
+    confirmBtn.textContent = "Confirm";
+    confirmBtn.style.cssText = "background:" + (type === "delete" ? "#da3633" : type === "add" ? "#1db954" : "#262e3a") + ";color:#ffffff;border:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;";
+    confirmBtn.addEventListener("click", () => {
+      overlay.remove();
+      if (onConfirm) onConfirm();
+    });
+
+    actions.append(cancelBtn, confirmBtn);
+  } else {
+    const okBtn = document.createElement("button");
+    okBtn.type = "button";
+    okBtn.textContent = "OK";
+    okBtn.style.cssText = "background:#1b212c;color:#e8ecf2;border:1px solid #262e3a;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;";
+    okBtn.addEventListener("click", () => {
+      overlay.remove();
+      if (onConfirm) onConfirm();
+    });
+    actions.appendChild(okBtn);
+  }
+
+  box.append(closeBtn, h3, p, actions);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay) {
+      overlay.remove();
+      if (onCancel) onCancel();
+    }
+  });
+}
 
 function currentPlayingUri() {
   if (pendingTrackUri) return pendingTrackUri;
@@ -437,6 +527,8 @@ async function spFetch(url, token, attempt = 1) {
 }
 
 async function loadPlaylist(name, token, prefetchedMeta) {
+  const entry = PLAYLISTS[name] || cache[name];
+  if (entry && entry.local) return cache[name];
   const raw = String(PLAYLISTS[name].id || "").trim();
   const match = raw.match(/([0-9A-Za-z]{22})(?:[?/]|$)/);
   const id = match ? match[1] : raw;
@@ -1058,7 +1150,60 @@ function renderSourceGrid() {
     bindImg(img, entry.image || (cache[name] && cache[name].image));
     const label = document.createElement("span");
     label.textContent = entry.label || name;
+    if (entry.local || (PLAYLISTS[name] && PLAYLISTS[name].local)) {
+      const badge = document.createElement("span");
+      badge.className = "local-badge";
+      badge.textContent = "local";
+      badge.style.cssText = "font-size:10px;background:#30363d;color:#8b949e;padding:1px 4px;border-radius:4px;margin-left:6px;vertical-align:middle;";
+      label.appendChild(badge);
+    }
+    
     btn.append(img, label);
+
+    if (entry.local || (PLAYLISTS[name] && PLAYLISTS[name].local)) {
+      const minus = document.createElement("span");
+      minus.className = "grid-minus";
+      minus.setAttribute("role", "button");
+      minus.textContent = "-";
+      minus.title = "Delete local playlist";
+      minus.style.cssText = "position:absolute;top:6px;left:6px;z-index:2;background:rgba(38,46,58,0.65);border:none;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#e8ecf2;font-weight:bold;cursor:pointer;";
+      btn.style.position = "relative";
+      minus.addEventListener("click", async ev => {
+        ev.stopPropagation();
+        showAppDialog({
+          type: "delete",
+          isQuestion: true,
+          title: "Delete Local Playlist",
+          text: "Are you sure you want to delete local playlist " + name + "?",
+          onConfirm: async () => {
+            try {
+              const token = !OFFLINE ? await getToken() : "";
+              await fetch("https://emnlvega.wixsite.com/my-site-2/_functions/localplaylists_delete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accessToken: token, playlistId: entry.id })
+              });
+            } catch (err) {
+              console.warn("[local] delete failed from Wix", err.message);
+            }
+            delete PLAYLISTS[name];
+            delete cache[name];
+            const idx = SOURCE_CANDIDATES.indexOf(name);
+            if (idx !== -1) SOURCE_CANDIDATES.splice(idx, 1);
+            writeCache();
+            if (sourceName() === name && SOURCE_CANDIDATES.length) {
+              selectSource(SOURCE_CANDIDATES[0]);
+            }
+            renderGrid();
+            renderSourceGrid();
+            renderTracks();
+            setFeedback("deleted local playlist " + name, false);
+          }
+        });
+      });
+      btn.appendChild(minus);
+    }
+
     btn.title = "Click to load · double-click to play";
     btn.addEventListener("click", () => selectSource(name));
     btn.addEventListener("dblclick", () => selectSource(name, true));
@@ -1066,34 +1211,35 @@ function renderSourceGrid() {
   }
   el.source.style.display = "none";
   grid.style.display = sourcesCollapsed ? "none" : "grid";
-  
 }
 
+
+
 async function syncPlaylist(name, token) {
-  const entry = cache[name];
-  if (!entry || !entry.id) {
+  const entry = cache[name] || PLAYLISTS[name];
+  if (entry && entry.local) return false;
+  const currentEntry = cache[name];
+  if (!currentEntry || !currentEntry.id) {
     await loadPlaylist(name, token);
     return true;
   }
-  if (hasPending(entry.id)) {
+  if (hasPending(currentEntry.id)) {
     console.log("[data] sync skip", name, "pending exists");
     return false;
   }
-  const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${entry.id}`, {
+  const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${currentEntry.id}`, {
     cache: "no-store",
     headers: { Authorization: `Bearer ${token}` }
   });
   if (!metaRes.ok) throw new Error("ERROR meta " + name + " " + metaRes.status);
   const meta = await metaRes.json();
 
-  if (entry.snapshot_id && meta.snapshot_id === entry.snapshot_id) {
-    console.log("[data] sync", name, "unchanged, 1 call");
-    entry.loadedAt = Date.now();
+  if (currentEntry.snapshot_id && meta.snapshot_id === currentEntry.snapshot_id) {
+    currentEntry.loadedAt = Date.now();
     writeCache();
-    return false;   // nothing changed, no full load
+    return false;
   }
 
-  console.log("[data] sync", name, "changed, full load");
   await loadPlaylist(name, token, meta);
   return true;
 }
@@ -1292,7 +1438,10 @@ async function resolvePlaylistData(name, token) {
 }
 
 async function selectSource(name, play) {
+  changedPlayingNow();
   localStorage.setItem(SOURCE_KEY, name);
+  const sourcesLabel = document.getElementById("sources-label");
+  if (sourcesLabel) sourcesLabel.textContent = name;
   const grid = document.getElementById("source-grid");
   if (grid) {
     for (const b of grid.children) b.classList.toggle("active", b.dataset.name === name);
@@ -1322,19 +1471,35 @@ async function selectSource(name, play) {
       }
     }
   };
+
+  const entry = PLAYLISTS[name] || cache[name];
+  if (entry && entry.local) {
+    renderTracks();
+    pickFirst();
+    highlightTracks();
+    markGridHasTrack();
+    if (play && currentTrack) {
+      try {
+        const token = await getToken();
+        await playFromGesture(currentTrack, token);
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
+    }
+    return;
+  }
+
   try {
     const token = await getToken();
     setStatus("Loading " + name);
     const source = await resolvePlaylistData(name, token);
     if (source === "none") {
-      console.log("[data] select", name, "-> API fetch (no local, no wix)");
       const changed = await syncPlaylist(name, token);
       if (changed) await commitPlaylist(name, token);
     } else {
-      console.log("[data] select", name, "-> resolved from", source, "checking snapshot (1 call)");
       const changed = await syncPlaylist(name, token);
       if (changed) {
-        try { await commitPlaylist(name, token); } catch (_) { /* best effort */ }
+        try { await commitPlaylist(name, token); } catch (_) {}
         renderSourceGrid();
       }
     }
@@ -1344,7 +1509,6 @@ async function selectSource(name, play) {
     setStatus("");
     setFeedback(err.message, true);
   }
-  
 }
 
 function renderSourceSelect() {
@@ -1433,6 +1597,7 @@ function renderTracks() {
     }
     card.addEventListener("click", async () => {
       try {
+        changedPlayingNow()
         const token = await getToken();
         currentTrack = track;
         await playFromGesture(track, token);
@@ -1445,6 +1610,7 @@ function renderTracks() {
     el.list.appendChild(card);
   }
   paintSongsProgress(name);
+  refreshNpPanel();
 }
 
 function highlightTracks() {
@@ -1585,7 +1751,7 @@ function renderGrid() {
   const cur = currentTrack && currentTrack.uri;
   for (const name of gridOrder()) {
     const entry = PLAYLISTS[name];
-    if (entry.extra) continue;
+    if (!entry || entry.extra) continue;
     const isHidden = hidden.includes(name);
     if (isHidden && !showHiddenGrid) continue;
     const btn = document.createElement("button");
@@ -1598,74 +1764,99 @@ function renderGrid() {
     const label = document.createElement("span");
     label.textContent = entry.label;
     if (reorderMode) {
-  const badge = document.createElement("span");
-  badge.className = "grid-minus";
-  badge.setAttribute("role", "button");
-  badge.textContent = isHidden ? "+" : "-";
-  badge.addEventListener("click", ev => {
-    ev.stopPropagation();
-    hideGrid(name, !isHidden);
-    renderGrid();
-  });
-  const sync = document.createElement("span");
-  sync.className = "grid-sync";
-  sync.setAttribute("role", "button");
-  sync.innerHTML = '<i class="fa-solid fa-rotate"></i>';
-  sync.title = "Sync this playlist";
-  sync.addEventListener("click", async ev => {
-    ev.stopPropagation();
-    if (sync.classList.contains("busy")) return;
-    sync.classList.add("busy");
-    try {
-      const token = await getToken();
-      const changed = await syncPlaylist(name, token);
-      if (changed) {
-        try { await commitPlaylist(name, token); } catch (_) { /* best effort */ }
-        setFeedback("synced " + name, false);
-      } else {
-        setFeedback("synced " + name + " (unchanged)", false);
-      }
-      renderGrid();
-      renderTracks();
-    } catch (err) {
-      setFeedback(err.message, true);
-    } finally {
-      sync.classList.remove("busy");
+      const badge = document.createElement("span");
+      badge.className = "grid-minus";
+      badge.setAttribute("role", "button");
+      badge.textContent = "-";
+      badge.title = entry.local ? "Delete local playlist" : "Hide playlist";
+      badge.addEventListener("click", async ev => {
+        ev.stopPropagation();
+        if (entry.local) {
+          if (!confirm("Delete local playlist " + name + "?")) return;
+          try {
+            const token = await getToken();
+            await fetch(LOCAL_PLAYLISTS_URL, {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ accessToken: token, playlistId: entry.id })
+            });
+          } catch (_) {}
+          delete PLAYLISTS[name];
+          delete cache[name];
+          const idx = SOURCE_CANDIDATES.indexOf(name);
+          if (idx !== -1) SOURCE_CANDIDATES.splice(idx, 1);
+          writeCache();
+          if (sourceName() === name && SOURCE_CANDIDATES.length) {
+            selectSource(SOURCE_CANDIDATES[0]);
+          }
+          renderGrid();
+          renderSourceGrid();
+          renderTracks();
+          setFeedback("deleted local playlist " + name, false);
+          return;
+        }
+        hideGrid(name, !isHidden);
+        renderGrid();
+      });
+
+      const sync = document.createElement("span");
+      sync.className = "grid-sync";
+      sync.setAttribute("role", "button");
+      sync.innerHTML = '<i class="fa-solid fa-rotate"></i>';
+      sync.title = "Sync this playlist";
+      sync.addEventListener("click", async ev => {
+        ev.stopPropagation();
+        if (sync.classList.contains("busy")) return;
+        sync.classList.add("busy");
+        try {
+          const token = await getToken();
+          const changed = await syncPlaylist(name, token);
+          if (changed) {
+            try { await commitPlaylist(name, token); } catch (_) {}
+            setFeedback("synced " + name, false);
+          } else {
+            setFeedback("synced " + name + " (unchanged)", false);
+          }
+          renderGrid();
+          renderTracks();
+        } catch (err) {
+          setFeedback(err.message, true);
+        } finally {
+          sync.classList.remove("busy");
+        }
+      });
+      btn.append(img, label, badge, sync);
+    } else {
+      btn.append(img, label);
     }
-  });
-  btn.append(img, label, badge, sync);
-} else {
-  btn.append(img, label);
-}
     const has = cur && cache[name] && cache[name].tracks && cache[name].tracks.some(t => sameRecording(t, currentTrack));
-if (has) btn.classList.add("has-track");
+    if (has) btn.classList.add("has-track");
 
-if (reorderMode) {
-  btn.classList.add("reordering");
-  const up = document.createElement("span");
-  up.className = "reorder-arrow reorder-up";
-  up.innerHTML = '<i class="fa-solid fa-chevron-up"></i>';
-  up.addEventListener("click", ev => {
-    ev.stopPropagation();
-    moveInGridOrder(name, -1);
-  });
-  const down = document.createElement("span");
-  down.className = "reorder-arrow reorder-down";
-  down.innerHTML = '<i class="fa-solid fa-chevron-down"></i>';
-  down.addEventListener("click", ev => {
-    ev.stopPropagation();
-    moveInGridOrder(name, 1);
-  });
-  btn.append(up, down);
-}
+    if (reorderMode) {
+      btn.classList.add("reordering");
+      const up = document.createElement("span");
+      up.className = "reorder-arrow reorder-up";
+      up.innerHTML = '<i class="fa-solid fa-chevron-up"></i>';
+      up.addEventListener("click", ev => {
+        ev.stopPropagation();
+        moveInGridOrder(name, -1);
+      });
+      const down = document.createElement("span");
+      down.className = "reorder-arrow reorder-down";
+      down.innerHTML = '<i class="fa-solid fa-chevron-down"></i>';
+      down.addEventListener("click", ev => {
+        ev.stopPropagation();
+        moveInGridOrder(name, 1);
+      });
+      btn.append(up, down);
+    }
 
-btn.addEventListener("click", () => {
-  if (reorderMode) return;
-  onAdd(name, btn);
-});
+    btn.addEventListener("click", () => {
+      if (reorderMode) return;
+      onAdd(name, btn);
+    });
 
-el.grid.appendChild(btn);
-
+    el.grid.appendChild(btn);
   }
   el.grid.classList.toggle("has-moving", Boolean(movingTile));
   paintTargetBar();
@@ -1777,33 +1968,61 @@ function resolveHierarchy(name) {
   return [...out];
 }
 
+
 async function onAdd(name, btn) {
   if (!currentTrack) {
     setFeedback("ERROR no current track", true);
     return;
   }
-  const targets = hierarchyOn() ? [name, ...resolveHierarchy(name)] : [name];
+
+  const track = currentTrack;
+  const cascading = hierarchyOn();
+  const targets = cascading ? [name, ...resolveHierarchy(name)] : [name];
   const entry = cache[name];
-  const already = entry && entry.tracks && entry.tracks.some(t => sameRecording(t, currentTrack));
+  const already = entry && entry.tracks && entry.tracks.some(t => sameRecording(t, track));
+  let resumeAfter = false;
+  let playback = null;
+
   btn.classList.add("pending");
+
   try {
     const token = await getToken();
+
+    if (cascading && !already) {
+      playback = await fetchPlaybackState(token);
+
+      if (playback && !playback.paused) {
+        const pauseRes = await fetch(
+          "https://api.spotify.com/v1/me/player/pause?device_id=" + encodeURIComponent(playback.device.id),
+          {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+
+        resumeAfter = pauseRes.ok || pauseRes.status === 204;
+      }
+    }
+
     btn.classList.remove("pending");
+
     if (already) {
-      await removeTrack(currentTrack, name, token);
+      await removeTrack(track, name, token);
       setFeedback("removed from " + name, false);
       renderTracks();
       highlightTracks();
     } else {
       let totalAdded = 0;
       const errors = [];
+
       for (const target of targets) {
         try {
-          totalAdded += await addTrack(currentTrack, target, token);
+          totalAdded += await addTrack(track, target, token);
         } catch (err) {
           errors.push(target + ": " + err.message);
         }
       }
+
       if (errors.length) {
         setFeedback("partial " + errors.join(" · "), true);
       } else if (targets.length === 1) {
@@ -1811,19 +2030,37 @@ async function onAdd(name, btn) {
       } else {
         setFeedback("added to " + totalAdded + " of " + targets.length + " playlists", false);
       }
+
       if (totalAdded && apiHoldUntil() <= Date.now()) {
-        try { await saveToLibrary(currentTrack, token); } catch (_) { /* library is best-effort */ }
+        try {
+          await saveToLibrary(track, token);
+        } catch (_) {}
       }
+
       btn.classList.add("ok");
       setTimeout(() => btn.classList.remove("ok"), 1200);
     }
+
     renderGrid();
   } catch (err) {
     btn.classList.remove("pending");
     btn.classList.add("err");
     setFeedback(err.message, true);
+  } finally {
+    if (resumeAfter && playback) {
+      try {
+        await fetch(
+          "https://api.spotify.com/v1/me/player/play?device_id=" + encodeURIComponent(playback.device.id),
+          {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${await getToken()}` }
+          }
+        );
+      } catch (_) {}
+    }
   }
 }
+
 
 function updatePlayerBar(track) {
   if (!track) return;
@@ -1921,6 +2158,7 @@ function onPlayerState(state) {
   startProgress(state);
   markGridHasTrack();
   paintVersionsButton();
+  refreshNpPanel();
 }
 
 function versionsOf(track) {
@@ -2007,6 +2245,7 @@ function openVersionsPanel() {
     });
     row.append(img, meta, playBtn);
     row.addEventListener("click", ev => {
+      changedPlayingNow()
       if (ev.target.closest(".version-play")) return;
       currentTrack = v;
       updatePlayerBar(v);
@@ -2048,14 +2287,15 @@ function pushRecent(track) {
 }
 
 function paintRecentGrid() {
-  if (!recentPanel) return;
-  recentPanel.innerHTML = "";
+  const target = recentPanel || (npPanel && npView === "recent" ? npPanel : null);
+  if (!target) return;
+  target.innerHTML = "";
   const list = recentList();
   if (!list.length) {
     const empty = document.createElement("p");
     empty.className = "recent-empty";
     empty.textContent = "No recent songs";
-    recentPanel.appendChild(empty);
+    target.appendChild(empty);
     return;
   }
   for (const t of list) {
@@ -2068,10 +2308,10 @@ function paintRecentGrid() {
     meta.innerHTML = `<p class="track-name"></p><p class="track-artists"></p>`;
     meta.querySelector(".track-name").textContent = t.name;
     meta.querySelector(".track-artists").textContent = t.artists;
-    
     card.append(img, meta);
     card.addEventListener("click", async () => {
       try {
+        changedPlayingNow();
         const token = await getToken();
         currentTrack = t;
         await playFromGesture(t, token);
@@ -2083,8 +2323,13 @@ function paintRecentGrid() {
         setFeedback(err.message, true);
       }
     });
-    recentPanel.appendChild(card);
+    target.appendChild(card);
   }
+}
+
+function refreshNpPanel() {
+  if (!npPanel) return;
+  if (npView === "queue" || npView === "recent") paintNpGrid();
 }
 
 function toggleRecentPanel() {
@@ -2157,17 +2402,55 @@ async function startSession(token) {
   showApp();
   setStatus("Connecting player…");
   if (!player) await initPlayer(onPlayerState);
-  const who = me.display_name || me.id || "Spotify";
   setStatus("Discovering playlists…");
   for (const key of Object.keys(PLAYLISTS)) delete PLAYLISTS[key];
   SOURCE_CANDIDATES.length = 0;
-    const found = await ensurePlaylists(token);
+  const found = await ensurePlaylists(token);
   for (const p of found) {
     PLAYLISTS[p.label] = { id: p.id, label: p.label, image: p.image };
     if (cache[p.label]) cache[p.label].id = p.id;
   }
-  SOURCE_CANDIDATES.push(...Object.keys(PLAYLISTS));
+
+  try {
+    const res = await fetch(LOCAL_PLAYLISTS_URL + "?accessToken=" + encodeURIComponent(token));
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.error && data.items) {
+        for (const item of data.items) {
+          const label = item.label;
+          PLAYLISTS[label] = { id: item.playlistId, label, image: item.image, local: true };
+          if (!SOURCE_CANDIDATES.includes(label)) SOURCE_CANDIDATES.push(label);
+          cache[label] = {
+            id: item.playlistId,
+            label,
+            image: item.image,
+            loadedAt: item.loadedAt,
+            total: item.tracks.length,
+            tracks: item.tracks,
+            local: true
+          };
+        }
+        writeCache();
+      }
+    }
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+
+  const validNames = new Set(Object.keys(PLAYLISTS));
+  for (const key of Object.keys(cache)) {
+    if (!validNames.has(key) && !cache[key].local) delete cache[key];
+  }
+  const storedOrder = localStorage.getItem("sp_grid_order");
+  if (storedOrder) {
+    try {
+      const pruned = JSON.parse(storedOrder).filter(n => validNames.has(n));
+      localStorage.setItem("sp_grid_order", JSON.stringify(pruned));
+    } catch (_) {}
+  }
+  SOURCE_CANDIDATES.push(...Object.keys(PLAYLISTS).filter(n => !SOURCE_CANDIDATES.includes(n)));
   writeCache();
+
   try {
     await syncPull(token);
   } catch (err) {
@@ -2390,7 +2673,7 @@ function setHidden(name, uri, value) {
   map[name] = list;
   localStorage.setItem(HIDDEN_KEY, JSON.stringify(map));
   const entry = PLAYLISTS[name];
-  if (entry) {
+  if (entry && entry.id) {
     getToken()
       .then(token => syncPush(token, entry.id, uri, value))
       .catch(err => setFeedback(err.message, true));
@@ -2455,6 +2738,7 @@ function isUnplayable(err) {
 }
 
 async function playAdjacent(dir, hide) {
+  changedPlayingNow()
   if (shuffleOn && dir === 1) return playNextShuffled(hide);
   const name = sourceName();
   const tracks = queueTracks(name);
@@ -2538,20 +2822,42 @@ function cycleRepeat() {
   setFeedback("repeat " + repeatMode, false);
 }
 
-function togglePreviewMode() {
-  previewMode = !previewMode;
+function stopPreviewMode() {
+  previewMode = false;
+  previewAbort = true;
+
   const btn = document.getElementById("np-preview-btn");
-  if (btn) btn.classList.toggle("active", previewMode);
+  if (btn) btn.classList.remove("active");
+
   const settings = document.getElementById("preview-settings");
   if (settings) settings.remove();
-  if (!previewMode) {
-    previewAbort = true;
+
+  resetPresets();
+}
+
+function changedPlayingNow() {
+  if (!previewMode && !previewRunning) return;
+  stopPreviewMode();
+}
+
+function togglePreviewMode() {
+  if (previewMode) {
+    stopPreviewMode();
     setFeedback("preview off", false);
     return;
   }
+
+  previewMode = true;
+  const btn = document.getElementById("np-preview-btn");
+  if (btn) btn.classList.add("active");
+
+  const settings = document.getElementById("preview-settings");
+  if (settings) settings.remove();
+
   setFeedback("preview on · " + previewSeconds + "s · " + previewPresets, false);
   runPreviewForCurrent();
 }
+
 
 async function previewAdvance() {
   const name = sourceName();
@@ -2758,6 +3064,7 @@ function paintNpGrid() {
     card.append(img, meta);
     card.addEventListener("click", async () => {
       try {
+        changedPlayingNow()
         const token = await getToken();
         currentTrack = t;
         await playFromGesture(t, token);
@@ -3118,6 +3425,7 @@ function applyGridScale(v) {
 }
 
 async function playRandom() {
+  changedPlayingNow()
   const name = sourceName();
   const tracks = ((cache[name] && cache[name].tracks) || []).filter(t => !isHidden(name, t.uri));
   if (!tracks.length) {
@@ -3200,7 +3508,8 @@ function buildSourcesBar() {
   bar.className = "sources-bar";
   const label = document.createElement("span");
   label.className = "sources-label";
-  label.textContent = "Sources";
+  label.id = "sources-label";
+  label.textContent = sourceName();
   const collapse = document.createElement("button");
   collapse.type = "button";
   collapse.className = "sources-collapse";
@@ -3260,13 +3569,14 @@ function buildTargetBar() {
   reorderBtn.type = "button";
   reorderBtn.className = "target-toggle";
   const paintReorder = () => {
-    reorderBtn.classList.toggle("on", reorderMode);
+    reorderBtn.classList.toggle("on", reorderMode || showHiddenGrid);
     reorderBtn.innerHTML = '<i class="fa-solid fa-pen"></i><span>' + (reorderMode ? "Done" : "Edit") + '</span>';
-    reorderBtn.title = reorderMode ? "Exit reorder mode" : "Reorder playlists";
+    reorderBtn.title = reorderMode ? "Exit edit mode" : "Edit playlists";
   };
   paintReorder();
   reorderBtn.addEventListener("click", () => {
     reorderMode = !reorderMode;
+    showHiddenGrid = reorderMode;
     paintReorder();
     renderGrid();
   });
@@ -3281,7 +3591,7 @@ function buildTargetBar() {
   pendingBtn.addEventListener("click", () => replayPending());
   const right = document.createElement("div");
   right.className = "target-right";
-  right.append(hiddenBtn, reorderBtn);
+  right.append(reorderBtn);
   right.appendChild(pendingBtn);
   bottom.appendChild(right);
 
@@ -3301,12 +3611,19 @@ function buildHeader() {
   wrap.className = "header-text";
 
   header.append(logo, wrap);
+
+  const versionSpan = document.createElement("span");
+  versionSpan.className = "header-version";
+  versionSpan.textContent = VERSION_NUMBER;
+  versionSpan.style.cssText = "color: var(--blackG); margin-right: 12px; font-size: 10px; font-family: monospace;";
+
   const out = document.createElement("button");
   out.type = "button";
   out.className = "header-signout";
   out.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i><span>Sign out</span>';
   out.addEventListener("click", signOut);
-  header.appendChild(out);
+
+  header.append(versionSpan, out);
   el.main.insertBefore(header, el.main.firstChild);
   document.querySelectorAll("h1, h2, h3, header").forEach(node => {
     if (node.closest("#app-header")) return;
@@ -3380,7 +3697,7 @@ async function reconcileDevice() {
   setStatus("Playing on " + (api.device && api.device.name || "another device"));
 }
 
-function renderToolsGrid() {
+async function renderToolsGrid() {
   const grid = document.getElementById("tools-grid");
   if (!grid) return;
   grid.innerHTML = "";
@@ -3415,6 +3732,19 @@ function renderToolsGrid() {
       grid.appendChild(btn);
       continue;
     }
+    if (t.id === "localplaylist") {
+      btn.addEventListener("click", async () => {
+        try {
+          const token = await getToken();
+          await openLocalPlaylistTool(token);
+        } catch (err) {
+          setFeedback(err.message, true);
+        }
+      });
+      grid.appendChild(btn);
+      continue;
+    }
+    
     btn.addEventListener("click", async () => {
       try {
         const token = await getToken();
@@ -3581,6 +3911,140 @@ function openHierarchyPanel() {
   }
 
   document.getElementById("tool-panel-host").appendChild(panel);
+}
+
+async function openLocalPlaylistTool(token) {
+    const old = document.getElementById("tool-panel");
+    if (old) old.remove();
+
+    const panel = document.createElement("div");
+    panel.id = "tool-panel";
+    panel.className = "tool-panel";
+
+    const head = document.createElement("div");
+    head.className = "tool-head";
+    const h3 = document.createElement("h3");
+    h3.textContent = "Create Local Playlist";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "tool-close";
+    close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    close.addEventListener("click", () => panel.remove());
+    head.append(h3, close);
+
+    const hint = document.createElement("p");
+    hint.className = "tool-hint";
+    hint.textContent = "Paste Spotify track links below. This playlist will be saved locally on Wix with a special label.";
+    panel.append(head, hint);
+
+    const nameWrap = document.createElement("label");
+    nameWrap.className = "tool-label";
+    nameWrap.textContent = "Playlist name";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = "Local " + new Date().toISOString().slice(0, 10);
+    nameWrap.appendChild(nameInput);
+    panel.appendChild(nameWrap);
+
+    const area = document.createElement("textarea");
+    area.rows = 10;
+    area.style.cssText = "width:100%;resize:vertical;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:8px;font-family:monospace;font-size:12px;";
+    area.placeholder = "https://open.spotify.com/track/...";
+    panel.appendChild(area);
+
+    const actions = document.createElement("div");
+    actions.className = "tool-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => panel.remove());
+    const create = document.createElement("button");
+    create.type = "button";
+    create.className = "tool-create";
+    create.textContent = "Save local playlist";
+    actions.append(cancel, create);
+    panel.appendChild(actions);
+
+    create.addEventListener("click", async () => {
+        const ids = parseTrackIds(area.value);
+        if (!ids.length) {
+            setFeedback("ERROR no tracks", true);
+            return;
+        }
+        create.disabled = true;
+        create.textContent = "Working...";
+        try {
+            const playlistName = "local: " + (nameInput.value.trim() || "Playlist");
+            const playlistId = "local_" + Date.now();
+            const tracks = [];
+            for (const id of ids) {
+                let track = lookupTrack("spotify:track:" + id);
+                if (!track) {
+                    const res = await fetch(`https://api.spotify.com/v1/tracks/${id}`, {
+                        headers: { Authorization: "Bearer " + token }
+                    });
+                    if (res.ok) {
+                        const t = await res.json();
+                        track = {
+                            uri: t.uri,
+                            name: t.name,
+                            artists: (t.artists || []).map(a => a.name).join(", "),
+                            durationMs: t.duration_ms,
+                            image: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : null,
+                            isrc: t.external_ids && t.external_ids.isrc ? t.external_ids.isrc : null
+                        };
+                    } else {
+                        track = {
+                            uri: "spotify:track:" + id,
+                            name: "Track " + id,
+                            artists: "Unknown",
+                            durationMs: 0,
+                            image: null,
+                            isrc: null
+                        };
+                    }
+                }
+                tracks.push(track);
+            }
+
+            PLAYLISTS[playlistName] = { id: playlistId, label: playlistName, image: tracks[0] ? tracks[0].image : null, local: true };
+            if (!SOURCE_CANDIDATES.includes(playlistName)) SOURCE_CANDIDATES.push(playlistName);
+            cache[playlistName] = {
+                id: playlistId,
+                label: playlistName,
+                image: tracks[0] ? tracks[0].image : null,
+                loadedAt: Date.now(),
+                total: tracks.length,
+                tracks,
+                local: true
+            };
+            writeCache();
+
+            await fetch(LOCAL_PLAYLISTS_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    accessToken: token,
+                    playlistId,
+                    label: playlistName,
+                    image: tracks[0] ? tracks[0].image : null,
+                    tracks
+                })
+            });
+
+            localStorage.setItem(SOURCE_KEY, playlistName);
+            renderSourceGrid();
+            renderTracks();
+            panel.remove();
+            setFeedback("created local playlist " + playlistName, false);
+        } catch (err) {
+            create.disabled = false;
+            create.textContent = "Save local playlist";
+            setFeedback(err.message, true);
+        }
+    });
+
+    document.getElementById("tool-panel-host").appendChild(panel);
 }
 
 async function openTool(toolId, token) {
@@ -3788,7 +4252,6 @@ async function openTool(toolId, token) {
       setFeedback(err.message, true);
     }
   });
-
   updatePreview();
   document.getElementById("tool-panel-host").appendChild(panel);
 }
@@ -3978,7 +4441,7 @@ function buildApiCounter() {
   return wrap;
 }
 
-function startOfflineSession() {
+async function startOfflineSession() {
   showApp();
   setStatus("OFFLINE — UI preview");
   const demo = [
@@ -4014,6 +4477,30 @@ function startOfflineSession() {
       tracks
     };
   }
+
+  try {
+    const res = await fetch(LOCAL_PLAYLISTS_URL);
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.error && data.items) {
+        for (const item of data.items) {
+          const label = item.label;
+          PLAYLISTS[label] = { id: item.playlistId, label, image: item.image, local: true };
+          if (!SOURCE_CANDIDATES.includes(label)) SOURCE_CANDIDATES.push(label);
+          cache[label] = {
+            id: item.playlistId,
+            label,
+            image: item.image,
+            loadedAt: item.loadedAt,
+            total: item.tracks.length,
+            tracks: item.tracks,
+            local: true
+          };
+        }
+      }
+    }
+  } catch (_) {}
+
   localStorage.setItem(SOURCE_KEY, "nu vygr");
   currentTrack = cache["nu vygr"].tracks[0];
   updatePlayerBar(currentTrack);
@@ -4296,14 +4783,14 @@ songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle, playAllBt
     }
   });
 
-    const toolsHost = document.createElement("div");
+const toolsHost = document.createElement("div");
   toolsHost.id = "tools-host";
   const toolsGrid = document.createElement("div");
   toolsGrid.id = "tools-grid";
   const panelHost = document.createElement("div");
   panelHost.id = "tool-panel-host";
   toolsHost.append(toolsGrid, panelHost);
-  songsPanel.parentElement.insertBefore(toolsHost, songsPanel.nextSibling);
+  songsPanel.parentElement.insertBefore(toolsHost, songsPanel);
 
   const toolsBtn = document.createElement("button");
   toolsBtn.type = "button";
