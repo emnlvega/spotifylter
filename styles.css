@@ -6,6 +6,7 @@
   --text: #e8ecf2;
   --muted: #48ac55;
   --white: #ffffff;
+  --grey: #777c8b;
   --accent: #1db954;
   --action: #1a9143;
   --darkG: #166632;
@@ -35,7 +36,7 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 9999;
-  opacity: 0.10;
+  opacity: 0.15;
   mix-blend-mode: exclusion;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='turbulence' baseFrequency='.5' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
   background-repeat: repeat;
@@ -168,7 +169,7 @@ select:focus, input:focus, textarea:focus {
 
 .zoom-group i {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--action);
   margin-right: 2px;
 }
 
@@ -294,7 +295,7 @@ select:focus, input:focus, textarea:focus {
   position: absolute;
   top: calc(var(--np-art) + 20px);
   transform: translateY(-120%);
-  height: 200px;
+  height: 270px;
   min-width: 50px;
   display: flex;
   align-items: center;
@@ -322,8 +323,10 @@ select:focus, input:focus, textarea:focus {
   gap: 12px;
   align-content: start;
   padding: 10px;
-  background: transparent;
+  background: linear-gradient(70deg, var(--blackG) 0%, var(--bg) 35%, var(--bg) 65%, var(--blackG) 100%);
+  border: 1px solid var(--line);
   border-radius: 8px;
+
   margin-top: 12px;
 }
 
@@ -523,16 +526,17 @@ input[type="range"]::-moz-range-thumb {
   body { padding: 14px; }
   #player-view { padding: 24px 0; }
   #player-view .np-card { padding: 0; }
-  #player-view .np-nav {
-    position: static;
-    transform: none;
-    height: auto;
-    min-width: 0;
-    padding: 14px 12px;
+  #player-view .np-controls .np-nav {
+    position: absolute;
+    top: 125px; 
+    transform: translateY(-50%);
+    height: 240px;
+    min-width: 50px;
+    padding: 10px 8px;
     font-size: 14px;
   }
   #player-view .np-nav:hover { transform: translateY(-1px); }
-  :root { --np-art: 240px; }
+  :root { --np-art: 250px; }
   #player-view .np-controls,
   #player-view .np-seeks { flex-wrap: wrap; justify-content: center; }
   #track-list { min-height: 700px !important; } 
@@ -604,6 +608,7 @@ input[type="range"]::-moz-range-thumb {
   background: var(--accent);
 }
 
+
 #player-view .np-shuffle.active {
   background: var(--accent);
   color: var(--blackG);
@@ -611,10 +616,12 @@ input[type="range"]::-moz-range-thumb {
 
 #source-select {
   display: none;
+  
 }
 
 #source-grid {
   display: grid;
+  
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
   gap: 8px;
   margin: 12px 0;
@@ -1336,7 +1343,8 @@ body.auth-mode #auth-box {
 .songs-panel {
   max-height: 60vh;
   overflow-y: auto;
-  background: linear-gradient(70deg, var(--blackG) 0%, var(--bg) 35%, var(--bg) 65%, var(--blackG) 100%);
+  background: transparent;
+  border: 1px solid transparent;
   overflow-x: hidden;
   margin-top: 5px;
 }
@@ -2071,4 +2079,89 @@ body.auth-mode #auth-box {
 .np-grid-list .track img {
   pointer-events: none;
   -webkit-user-drag: none;
+}
+
+/* Tools Button (Yellow) */
+.outline-btn.tool-btn-custom {
+  color: var(--yellow);
+  border-color: var(--yellow);
+}
+.outline-btn.tool-btn-custom i {
+  color: var(--yellow);
+}
+.outline-btn.tool-btn-custom:hover {
+  background: var(--yellow);
+  color: var(--bg);
+  border-color: var(--yellow);
+}
+.outline-btn.tool-btn-custom:hover i {
+  color: var(--bg);
+}
+
+/* Reload Grid Button (Grey) */
+.outline-btn.reload-btn-custom {
+  color: var(--grey);
+  border-color: var(--grey);
+}
+.outline-btn.reload-btn-custom i {
+  color: var(--grey);
+}
+.outline-btn.reload-btn-custom:hover {
+  background: var(--grey);
+  color: var(--bg);
+  border-color: var(--grey);
+}
+.outline-btn.reload-btn-custom:hover i {
+  color: var(--bg);
+}
+
+/* Unfilter All Button (White) */
+.outline-btn.unfilter-btn-custom {
+  color: var(--white);
+  border-color: var(--white);
+}
+.outline-btn.unfilter-btn-custom i {
+  color: var(--white);
+}
+.outline-btn.unfilter-btn-custom:hover {
+  background: var(--white);
+  color: var(--bg);
+  border-color: var(--white);
+}
+.outline-btn.unfilter-btn-custom:hover i {
+  color: var(--bg);
+}
+
+/* Undo Button (Red) */
+.outline-btn.undo-btn-custom {
+  color: var(--red);
+  border-color: var(--red);
+}
+.outline-btn.undo-btn-custom i {
+  color: var(--red);
+}
+.outline-btn.undo-btn-custom:hover {
+  background: var(--red);
+  color: var(--white);
+  border-color: var(--red);
+}
+.outline-btn.undo-btn-custom:hover i {
+  color: var(--white);
+}
+
+/* Reverse Button (Yellow) */
+.outline-btn.reverse-btn-custom {
+  color: var(--yellow);
+  border-color: var(--yellow);
+}
+.outline-btn.reverse-btn-custom i {
+  color: var(--yellow);
+}
+.outline-btn.reverse-btn-custom:hover {
+  background: var(--yellow);
+  color: var(--bg);
+  border-color: var(--yellow);
+}
+.outline-btn.reverse-btn-custom:hover i {
+  color: var(--bg);
 }
