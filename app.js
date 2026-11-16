@@ -1119,15 +1119,12 @@ async function addTrack(track, selectedName, token) {
 
 function sourceName() {
   const saved = localStorage.getItem(SOURCE_KEY);
-  if (saved && SOURCE_CANDIDATES.includes(saved)) return saved;
+  if (saved && (SOURCE_CANDIDATES.includes(saved) || (typeof PLAYLISTS !== 'undefined' && PLAYLISTS[saved]))) {
+    return saved;
+  }
   return SOURCE_CANDIDATES[0];
 }
 
-function sourceName() {
-  const saved = localStorage.getItem(SOURCE_KEY);
-  if (saved && SOURCE_CANDIDATES.includes(saved)) return saved;
-  return SOURCE_CANDIDATES[0];
-}
 
 const LOCAL_PLAYLISTS_DELETE_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/localplaylists_delete";
 
@@ -1138,6 +1135,9 @@ function renderSourceGrid() {
     grid.id = "source-grid";
     el.source.parentElement.insertBefore(grid, el.source);
   }
+  
+  grid.style.display = sourcesCollapsed ? "none" : "grid";
+  
   grid.innerHTML = "";
   const saved = sourceName();
   for (const name of SOURCE_CANDIDATES) {
@@ -1443,11 +1443,9 @@ async function selectSource(name, play) {
   changedPlayingNow();
   localStorage.setItem(SOURCE_KEY, name);
   const sourcesLabel = document.getElementById("sources-label");
-  if (sourcesLabel) sourcesLabel.textContent = name;
+  if (sourcesLabel) sourcesLabel.textContent = sourceName();
   const grid = document.getElementById("source-grid");
-  if (grid) {
-    for (const b of grid.children) b.classList.toggle("active", b.dataset.name === name);
-  }
+  if (grid) grid.style.display = sourcesCollapsed ? "none" : "grid";
   const pickFirst = () => {
     const tracks = (cache[name] && cache[name].tracks) || [];
     const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
@@ -1809,23 +1807,32 @@ function renderGrid() {
       sync.addEventListener("click", async ev => {
         ev.stopPropagation();
         if (sync.classList.contains("busy")) return;
-        sync.classList.add("busy");
-        try {
-          const token = await getToken();
-          const changed = await syncPlaylist(name, token);
-          if (changed) {
-            try { await commitPlaylist(name, token); } catch (_) {}
-            setFeedback("synced " + name, false);
-          } else {
-            setFeedback("synced " + name + " (unchanged)", false);
+
+        showAppDialog({
+          type: "change",
+          isQuestion: true,
+          title: "Sync Playlist",
+          text: "Do you want to sync " + name + " with Spotify now?",
+          onConfirm: async () => {
+            sync.classList.add("busy");
+            try {
+              const token = await getToken();
+              const changed = await syncPlaylist(name, token);
+              if (changed) {
+                try { await commitPlaylist(name, token); } catch (_) {}
+                setFeedback("synced " + name, false);
+              } else {
+                setFeedback("synced " + name + " (unchanged)", false);
+              }
+              renderGrid();
+              renderTracks();
+            } catch (err) {
+              setFeedback(err.message, true);
+            } finally {
+              sync.classList.remove("busy");
+            }
           }
-          renderGrid();
-          renderTracks();
-        } catch (err) {
-          setFeedback(err.message, true);
-        } finally {
-          sync.classList.remove("busy");
-        }
+        });
       });
       btn.append(img, label, badge, sync);
     } else {
@@ -2078,7 +2085,12 @@ function handleEnd() {
   const uri = currentPlayingUri();
   if (!uri || endHandledFor === uri) return;
   endHandledFor = uri;
-  if (repeatMode === "all") playAdjacent(1, false);
+  
+  if (repeatMode === "all") {
+    playAdjacent(1, false);
+  } else {
+    playAdjacent(1, hideOnSkip);
+  }
 }
 
 function onPlayerState(state) {
@@ -2484,6 +2496,10 @@ async function startSession(token) {
   renderSourceGrid();
   renderTracks();
   paintVersionsButton();
+  
+  const container = document.getElementById("source-container");
+  if (container) container.style.display = "block";
+
   setStatus("");
 }
 
@@ -2918,7 +2934,6 @@ async function previewWaitUntil(targetMs, durationMs) {
   let lastLog = 0;
   while (true) {
     if (previewAbort || !previewMode) {
-      console.log("[preview] wait abort", { previewAbort, previewMode });
       return false;
     }
     try {
@@ -2929,17 +2944,14 @@ async function previewWaitUntil(targetMs, durationMs) {
       }
       if (!s.paused) {
         if (s.position >= targetMs) {
-          console.log("[preview] wait reached", s.position, ">=", targetMs);
           return true;
         }
         if (durationMs > 10000 && s.position >= durationMs - 500) {
-          console.log("[preview] wait near end", s.position, ">=", durationMs - 500);
           return false;
         }
       }
       const now = Date.now();
       if (now - lastLog > 2000) {
-        console.log("[preview] wait poll", { pos: s.position, target: targetMs, paused: s.paused });
         lastLog = now;
       }
     } catch (err) {
@@ -3389,7 +3401,7 @@ function buildPlayer() {
     if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
     paintRnd();
   });
-  controls.append(prev, toggle, rnd, queueBtn, repeatBtn, previewBtn, volumeBtn, next);
+  controls.append(prev, toggle, rnd, queueBtn,previewBtn, volumeBtn, next);
   center.appendChild(seeks);
   const volume = document.createElement("div");
   volume.className = "np-volume";
@@ -3478,18 +3490,28 @@ async function unhideAll() {
   const map = hiddenMap();
   const list = (map[name] || []).slice();
   if (!list.length) return;
-  map[name] = [];
-  localStorage.setItem(HIDDEN_KEY, JSON.stringify(map));
-  renderTracks();
-  renderGrid();
-  try {
-    const token = await getToken();
-    const id = PLAYLISTS[name] && PLAYLISTS[name].id;
-    if (!id) return;
-    await Promise.all(list.map(uri => syncPush(token, id, uri, false).catch(() => null)));
-  } catch (err) {
-    setFeedback(err.message, true);
-  }
+
+  showAppDialog({
+    type: "change",
+    isQuestion: true,
+    title: "Unfilter All Songs",
+    text: "Are you sure you want to unfilter all hidden songs in " + name + "?",
+    onConfirm: async () => {
+      map[name] = [];
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify(map));
+      renderTracks();
+      renderGrid();
+      setFeedback("unfiltered all in " + name, false);
+      try {
+        const token = await getToken();
+        const id = PLAYLISTS[name] && PLAYLISTS[name].id;
+        if (!id) return;
+        await Promise.all(list.map(uri => syncPush(token, id, uri, false).catch(() => null)));
+      } catch (err) {
+        setFeedback(err.message, true);
+      }
+    }
+  });
 }
 
 function signOut() {
@@ -3508,34 +3530,47 @@ function signOut() {
 function buildSourcesBar() {
   const bar = document.createElement("div");
   bar.className = "sources-bar";
+  
+  if (localStorage.getItem("sp_sources_collapsed") === null) {
+    sourcesCollapsed = true;
+    localStorage.setItem("sp_sources_collapsed", "1");
+  } else {
+    sourcesCollapsed = localStorage.getItem("sp_sources_collapsed") !== "0";
+  }
+
   const label = document.createElement("span");
   label.className = "sources-label";
   label.id = "sources-label";
   label.textContent = sourceName();
+
   const collapse = document.createElement("button");
   collapse.type = "button";
   collapse.className = "sources-collapse";
+  
   const paintCollapse = () => {
     collapse.innerHTML = sourcesCollapsed
       ? '<i class="fa-solid fa-chevron-down"></i>'
       : '<i class="fa-solid fa-chevron-up"></i>';
     collapse.title = sourcesCollapsed ? "Show sources" : "Hide sources";
+
+    const grid = document.getElementById("source-grid");
+    if (grid) grid.style.display = sourcesCollapsed ? "none" : "grid";
   };
+
   paintCollapse();
+
   collapse.addEventListener("click", () => {
     sourcesCollapsed = !sourcesCollapsed;
     localStorage.setItem("sp_sources_collapsed", sourcesCollapsed ? "1" : "0");
-    const grid = document.getElementById("source-grid");
-    if (grid) grid.style.display = sourcesCollapsed ? "none" : "grid";
     paintCollapse();
   });
+
   const hint = document.createElement("span");
   hint.className = "sources-hint";
   hint.textContent = "double-click to play";
   bar.append(label, collapse, hint);
   return bar;
 }
-
 function buildTargetBar() {
   const bar = document.createElement("div");
   bar.className = "target-bar";
@@ -4528,7 +4563,7 @@ async function boot() {
     fa.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css";
     document.head.appendChild(fa);
   }
-    el.refresh.style.display = "none";
+  el.refresh.style.display = "none";
 
   const songsRow = document.createElement("div");
   songsRow.className = "songs-row";
@@ -4541,7 +4576,7 @@ async function boot() {
   const skipToggle = document.createElement("button");
   skipToggle.type = "button";
   skipToggle.className = "outline-btn";
-  skipToggle.innerHTML = '<i class="fa-solid fa-forward-step"></i><span>Skip Filtered</span>';
+  skipToggle.innerHTML = '<i class="fa-solid fa-filter"></i><span>Filter</span>';
   const paintSkip = () => skipToggle.classList.toggle("on", hideOnSkip);
   paintSkip();
   skipToggle.addEventListener("click", () => {
@@ -4600,8 +4635,6 @@ async function boot() {
   gridZoom.append(gridZoomIcon, gDown, gUp);
   applyGridScale(localStorage.getItem(gKey) || 1);
 
-
-
   songsRow.append(songsToggle, skipToggle, playerZoom, gridZoom);
 
   const songsTools = document.createElement("div");
@@ -4657,90 +4690,88 @@ async function boot() {
   songsZoom.append(sDown, sUp);
   applyZoom();
 
-const songsFilters = document.createElement("div");
-songsFilters.className = "songs-filters";
+  const songsFilters = document.createElement("div");
+  songsFilters.className = "songs-filters";
 
-const filterWrap = document.createElement("div");
-filterWrap.className = "songs-filter-wrap";
-const filterInput = document.createElement("input");
-filterInput.type = "text";
-filterInput.placeholder = "Filter name or artist";
-filterInput.className = "songs-filter-input";
-filterInput.value = songFilter;
-let filterTimer = null;
-filterInput.addEventListener("input", () => {
-  songFilter = filterInput.value;
-  clearTimeout(filterTimer);
-  filterTimer = setTimeout(renderTracks, 150);
-});
-const filterClear = document.createElement("button");
-filterClear.type = "button";
-filterClear.className = "songs-filter-clear";
-filterClear.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-filterClear.title = "Clear filter";
-filterClear.addEventListener("click", () => {
-  filterInput.value = "";
-  songFilter = "";
-  renderTracks();
+  const filterWrap = document.createElement("div");
+  filterWrap.className = "songs-filter-wrap";
+  const filterInput = document.createElement("input");
+  filterInput.type = "text";
+  filterInput.placeholder = "Filter name or artist";
+  filterInput.className = "songs-filter-input";
+  filterInput.value = songFilter;
+  let filterTimer = null;
+  filterInput.addEventListener("input", () => {
+    songFilter = filterInput.value;
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(renderTracks, 150);
+  });
+  const filterClear = document.createElement("button");
+  filterClear.type = "button";
+  filterClear.className = "songs-filter-clear";
+  filterClear.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  filterClear.title = "Clear filter";
+  filterClear.addEventListener("click", () => {
+    filterInput.value = "";
+    songFilter = "";
+    renderTracks();
+    paintQueue();
+    setFeedback("filter cleared", false);
+  });
+  filterWrap.append(filterInput, filterClear);
+
+  const hiddenSelect = document.createElement("select");
+  hiddenSelect.className = "songs-filter-select";
+  hiddenSelect.append(new Option("All", "all"), new Option("Unfiltered", "unhidden"), new Option("Filtered", "hidden"));
+  hiddenSelect.value = songHiddenFilter;
+  hiddenSelect.addEventListener("change", () => {
+    songHiddenFilter = hiddenSelect.value;
+    renderTracks();
+  });
+
+  const sortSelect = document.createElement("select");
+  sortSelect.className = "songs-filter-select";
+  for (const [v, label] of [["default", "Playlist order"], ["name", "Name"], ["artist", "Artist"], ["durationAsc", "Shortest"], ["durationDesc", "Longest"]]) {
+    sortSelect.append(new Option(label, v));
+  }
+  sortSelect.value = songSort;
+  sortSelect.addEventListener("change", () => {
+    songSort = sortSelect.value;
+    renderTracks();
+  });
+
+  const queueToggle = document.createElement("button");
+  queueToggle.type = "button";
+  queueToggle.className = "outline-btn";
+  const paintQueue = () => {
+    queueToggle.classList.toggle("on", filterQueue);
+    queueToggle.innerHTML = '<i class="fa-solid fa-list-check"></i><span>Queue filter</span>';
+    queueToggle.title = filterQueue ? "Next/prev walk only filtered songs" : "Next/prev walk the full playlist";
+  };
   paintQueue();
-  setFeedback("filter cleared", false);
-});
-filterWrap.append(filterInput, filterClear);
+  queueToggle.addEventListener("click", () => {
+    filterQueue = !filterQueue;
+    localStorage.setItem("sp_filter_queue", filterQueue ? "1" : "0");
+    paintQueue();
+  });
 
-const hiddenSelect = document.createElement("select");
-hiddenSelect.className = "songs-filter-select";
-hiddenSelect.append(new Option("All", "all"), new Option("Unfiltered", "unhidden"), new Option("Filtered", "hidden"));
-hiddenSelect.value = songHiddenFilter;
-hiddenSelect.addEventListener("change", () => {
-  songHiddenFilter = hiddenSelect.value;
-  renderTracks();
-});
-
-const sortSelect = document.createElement("select");
-sortSelect.className = "songs-filter-select";
-for (const [v, label] of [["default", "Playlist order"], ["name", "Name"], ["artist", "Artist"], ["durationAsc", "Shortest"], ["durationDesc", "Longest"]]) {
-  sortSelect.append(new Option(label, v));
-}
-sortSelect.value = songSort;
-sortSelect.addEventListener("change", () => {
-  songSort = sortSelect.value;
-  renderTracks();
-});
-
-
-
-const queueToggle = document.createElement("button");
-queueToggle.type = "button";
-queueToggle.className = "outline-btn";
-const paintQueue = () => {
-  queueToggle.classList.toggle("on", filterQueue);
-  queueToggle.innerHTML = '<i class="fa-solid fa-list-check"></i><span>Queue filter</span>';
-  queueToggle.title = filterQueue ? "Next/prev walk only filtered songs" : "Next/prev walk the full playlist";
-};
-paintQueue();
-queueToggle.addEventListener("click", () => {
-  filterQueue = !filterQueue;
-  localStorage.setItem("sp_filter_queue", filterQueue ? "1" : "0");
-  paintQueue();
-});
-
-const playAllBtn = document.createElement("button");
-playAllBtn.type = "button";
-playAllBtn.className = "outline-btn";
-const paintPlayAll = () => {
-  playAllBtn.classList.toggle("on", playAll);
-  playAllBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Play filtered</span>';
-  playAllBtn.title = playAll ? "Playing all tracks (hidden included)" : "Skipping filtered tracks";
-};
-paintPlayAll();
-playAllBtn.addEventListener("click", () => {
-  playAll = !playAll;
-  localStorage.setItem("sp_play_all", playAll ? "1" : "0");
+  const playAllBtn = document.createElement("button");
+  playAllBtn.type = "button";
+  playAllBtn.className = "outline-btn";
+  const paintPlayAll = () => {
+    playAllBtn.classList.toggle("on", playAll);
+    playAllBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Play filtered</span>';
+    playAllBtn.title = playAll ? "Playing all tracks (hidden included)" : "Skipping filtered tracks";
+  };
   paintPlayAll();
-  renderTracks();
-});
+  playAllBtn.addEventListener("click", () => {
+    playAll = !playAll;
+    localStorage.setItem("sp_play_all", playAll ? "1" : "0");
+    paintPlayAll();
+    renderTracks();
+  });
 
-songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle, playAllBtn);
+  songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle, playAllBtn);
 
   songsTools.append(unhideBtn, reverseBtn, spacer, songsZoom);
 
@@ -4785,7 +4816,7 @@ songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle, playAllBt
     }
   });
 
-const toolsHost = document.createElement("div");
+  const toolsHost = document.createElement("div");
   toolsHost.id = "tools-host";
   const toolsGrid = document.createElement("div");
   toolsGrid.id = "tools-grid";
@@ -4806,12 +4837,9 @@ const toolsHost = document.createElement("div");
     renderToolsGrid();
     paintTools();
   });
-    songsRow.appendChild(toolsBtn);
+  songsRow.appendChild(toolsBtn);
   renderToolsGrid();
   paintToolsBadge();
-
-;
-
 
   const reloadBtn = document.createElement("button");
   reloadBtn.type = "button";
@@ -4830,7 +4858,12 @@ const toolsHost = document.createElement("div");
 
   toolbar.remove();
 
-    el.source.parentElement.insertBefore(buildSourcesBar(), el.source);
+  const sourceContainer = document.createElement("div");
+  sourceContainer.id = "source-container";
+  sourceContainer.style.display = "none";
+  sourceContainer.appendChild(buildSourcesBar());
+  el.source.parentElement.insertBefore(sourceContainer, el.source);
+
   paintTargetBar = buildTargetBar();
   paintTargetBar();
   for (const node of document.querySelectorAll("label, h2, h3, h4, p")) {
@@ -4849,7 +4882,12 @@ const toolsHost = document.createElement("div");
   });
   try {
     readCache();
-    if (OFFLINE) { startOfflineSession(); return; }
+    if (OFFLINE) {
+      startOfflineSession();
+      const container = document.getElementById("source-container");
+      if (container) container.style.display = "block";
+      return;
+    }
     document.addEventListener("visibilitychange", async () => {
       if (document.visibilityState !== "visible") return;
       try {
@@ -4858,7 +4896,7 @@ const toolsHost = document.createElement("div");
         setFeedback(err.message, true);
       }
     });
-      document.addEventListener("click", e => {
+    document.addEventListener("click", e => {
       const panel = document.getElementById("versions-panel");
       if (!panel) return;
       if (panel.contains(e.target)) return;
