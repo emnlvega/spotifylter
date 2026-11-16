@@ -25,25 +25,24 @@ html {
 }
 
 body {
-  background: linear-gradient(45deg, var(--blackG) 0%, var(--bg) 25%, var(--bg) 75%, var(--blackG) 100%);
+  background: linear-gradient(45deg, var(--blackG) 0%, var(--bg) 35%, var(--bg) 65%, var(--blackG) 100%);
   background-attachment: fixed;
 }
 
-body::before {
+body::after {
   content: "";
   position: fixed;
-  inset: -50%;
-  z-index: -1;
-  mix-blend-mode: exclusion;
-  background-image: var(--logo-pattern, none);
-  background-size: 30px 30px;
-  background-origin: content-box;
-  padding: 100px;
-  box-sizing: content-box;
-  background-repeat: repeat;
-  transform: rotate(45deg);
+  inset: 0;
   pointer-events: none;
+  z-index: 9999;
+  opacity: 0.10;
+  mix-blend-mode: exclusion;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='turbulence' baseFrequency='.5' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }
+
+
 
 body {
   isolation: isolate;
@@ -116,7 +115,6 @@ select:focus, input:focus, textarea:focus {
   flex-direction: column;
   gap: 14px;
   color: var(--text);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
 }
 
 #auth-box label {
@@ -307,7 +305,6 @@ select:focus, input:focus, textarea:focus {
 
 #player-view .np-seeks button:hover {
   background: var(--accent);
-  border-color: var(--action);
   color: var(--white);
 }
 
@@ -347,7 +344,7 @@ select:focus, input:focus, textarea:focus {
   gap: 12px;
   align-content: start;
   padding: 10px;
-  background: var(--surface-2);
+  background: transparent;
   border-radius: 8px;
   margin-top: 12px;
 }
@@ -360,7 +357,7 @@ select:focus, input:focus, textarea:focus {
   padding: 8px;
   border-radius: var(--r-md);
   background: var(--surface);
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
   cursor: pointer;
   overflow: hidden;
   min-width: 0;
@@ -436,7 +433,7 @@ select:focus, input:focus, textarea:focus {
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(10, 13, 18, .8);
+  background: var(--darkG);
   color: var(--accent);
   font-size: 14px;
   font-weight: 700;
@@ -477,7 +474,7 @@ select:focus, input:focus, textarea:focus {
 }
 
 #target-grid button.ok { border-color: var(--accent); }
-#target-grid button.err { border-color: #ff6b6b; }
+#target-grid button.err { border-color: var(--red); }
 #target-grid button.pending { opacity: .6; }
 #target-grid button.hidden-tile { opacity: .4; }
 
@@ -507,7 +504,7 @@ select:focus, input:focus, textarea:focus {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(10, 13, 18, .8);
+  background: var(--darkG);
   color: var(--text);
   font-size: 14px;
   line-height: 1;
@@ -561,7 +558,7 @@ input[type="range"]::-moz-range-thumb {
   #player-view .np-seeks { flex-wrap: wrap; justify-content: center; }
   #track-list { min-height: 700px !important; } 
   #target-grid { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); }
-  #app-header .header-signout {
+  #app-header .header-signout,.header-version {
     display: none !important;
   }
   #player-view .np-controls button{
@@ -705,7 +702,7 @@ input[type="range"]::-moz-range-thumb {
   background: var(--darkG);
 }
 #player-view .np-preset-pill button.np-preset.active {
-  background: var(--white);
+  background: var(--accent);
 }
 
 .skip-toggle {
@@ -733,7 +730,7 @@ input[type="range"]::-moz-range-thumb {
   border-color: transparent;
 }
 .skip-toggle.on:hover {
-  background: #166632;
+  background: var(--darkG);
 }
 
 #target-grid button.has-track {
@@ -745,7 +742,6 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 700;
 }
 #target-grid button.has-track .grid-minus {
-  background: rgba(6, 18, 10, .7);
   color: var(--white);
 }
 
@@ -787,7 +783,7 @@ input[type="range"]::-moz-range-thumb {
 #app-header #status-line {
   margin: 4px 0 0;
   font-size: 12px;
-  color: rgba(6, 18, 10, .75);
+  color: var(--muted);
   font-weight: 600;
   letter-spacing: .02em;
 }
@@ -1041,7 +1037,7 @@ input[type="range"]::-moz-range-thumb {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #ff9900;
+  background: var(--accent);
   margin-left: 6px;
   vertical-align: middle;
 }
@@ -1078,7 +1074,6 @@ body.auth-mode #auth-box {
   flex-direction: column;
   gap: 14px;
   color: var(--text);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
 }
 
 #auth-box .auth-logo {
@@ -1317,7 +1312,7 @@ body.auth-mode #auth-box {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(10, 13, 18, .8);
+  background: var(--darkG);
   color: var(--text);
   font-size: 10px;
   line-height: 1;
@@ -1361,7 +1356,7 @@ body.auth-mode #auth-box {
 .songs-panel {
   max-height: 60vh;
   overflow-y: auto;
-  background: var(--surface);
+  background: linear-gradient(70deg, var(--blackG) 0%, var(--bg) 35%, var(--bg) 65%, var(--blackG) 100%);
   overflow-x: hidden;
   margin-top: 5px;
 }
@@ -1369,7 +1364,7 @@ body.auth-mode #auth-box {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--surface);
+  background: transparent;
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -1413,7 +1408,7 @@ body.auth-mode #auth-box {
   align-items: center;
   padding: 5px 10px;
   border-radius: 999px;
-  background: rgba(6, 18, 10, .15);
+  background: var(--bg);
   color: var(--bg);
   font-size: 11px;
   font-weight: 700;
@@ -1472,7 +1467,6 @@ body.auth-mode #auth-box {
   flex-direction: column;
   gap: 4px;
   z-index: 100;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, .55);
 }
 .version-row {
   display: flex;
@@ -1725,7 +1719,6 @@ body.auth-mode #auth-box {
   transition: background var(--fast), transform var(--fast);
 }
 #target-grid .reorder-arrow:hover {
-  background: #6180ff;
   transform: translateX(-50%) scale(1.1);
 }
 #target-grid .reorder-up { top: 30%; }
@@ -1780,9 +1773,8 @@ body.auth-mode #auth-box {
   min-width: 40px;
   height: 32px;
   padding: 0;
-  background: var(--muted);
+  background: var(--darkG);
   color: transparent;
-  border: 1px solid var(--line);
   box-shadow: none;
   font-size: 0;
   opacity: 1;
@@ -1835,7 +1827,7 @@ body.auth-mode #auth-box {
   background: transparent;
 }
 
-#status-line.error { color: #ff6b6b; }
+#status-line.error { color: var(--red) }
 
 #player-view #np-grid {
   width: 100%;

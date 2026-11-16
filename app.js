@@ -1,5 +1,5 @@
-const VERSION_NUMBER = "v1.19"
-const OFFLINE = false;
+const VERSION_NUMBER = "v1.20"
+const OFFLINE = true;
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
 const SYNC_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hidden";
@@ -1007,6 +1007,7 @@ async function queuePending(op, token) {
   };
   pendingQueue.push(record);
   paintPendingButton();
+  schedulePendingReplay();
   try {
     await fetch(PENDING_URL, {
       method: "POST",
@@ -1027,6 +1028,7 @@ async function loadPendingFromWix(token) {
     if (json.error) return;
     pendingQueue = json.items || [];
     paintPendingButton();
+    schedulePendingReplay();
     console.log("[data] pending loaded", pendingQueue.length);
   } catch (err) {
     console.warn("[data] pending pull failed", err.message);
@@ -2722,7 +2724,10 @@ async function playNextShuffled(hide) {
   const tracks = playableTracks(name);
   if (!tracks.length) return;
   const original = currentTrack;
-  if (hide !== false && original && !playAll) setHidden(name, original.uri, true);
+  if (hide !== false && original && !playAll) {
+    setHidden(name, original.uri, true);
+    lastAutoHidden = { playlistName: name, track: original };
+  }
   const token = await getToken();
   const valid = new Set(tracks.map(t => t.uri));
   shuffleQueue = shuffleQueue.filter(u => valid.has(u));
@@ -2769,7 +2774,10 @@ async function playAdjacent(dir, hide) {
   const tracks = queueTracks(name);
   if (!tracks.length || !currentTrack) return;
   const original = currentTrack;
-  if (dir === 1 && hide !== false && !playAll) setHidden(name, original.uri, true);
+  if (dir === 1 && hide !== false && !playAll) {
+    setHidden(name, original.uri, true);
+    lastAutoHidden = { playlistName: name, track: original };
+  }
   const token = await getToken();
   const tried = new Set();
   let idx = tracks.findIndex(t => sameRecording(t, original));
@@ -2890,7 +2898,10 @@ async function previewAdvance() {
   if (!tracks.length || !currentTrack) return false;
   let idx = tracks.findIndex(t => sameRecording(t, currentTrack));
   if (idx === -1) idx = 0;
-  if (hideOnSkip && !playAll) setHidden(name, currentTrack.uri, true);
+  if (hideOnSkip && !playAll) {
+    setHidden(name, currentTrack.uri, true);
+    lastAutoHidden = { playlistName: name, track: currentTrack };
+  }
   const candidate = tracks[(idx + 1) % tracks.length];
   if (!candidate) return false;
   try {
@@ -4426,10 +4437,52 @@ function apiHoldUntil() {
   return Number(localStorage.getItem(API_HOLD_KEY) || 0);
 }
 
+let pendingReplayTimer = null;
+let lastAutoHidden = null;
+
+function schedulePendingReplay() {
+  clearTimeout(pendingReplayTimer);
+  if (!pendingQueue.length) return;
+  const remaining = apiHoldUntil() - Date.now();
+  const delay = remaining > 0 ? remaining + 1000 : 1000;
+  pendingReplayTimer = setTimeout(() => {
+    if (pendingQueue.length && apiHoldUntil() <= Date.now()) {
+      replayPending();
+    }
+  }, delay);
+}
+
+async function undoLastHide() {
+  if (!lastAutoHidden) {
+    setFeedback("Nothing to undo", false);
+    return;
+  }
+  const { playlistName, track } = lastAutoHidden;
+  lastAutoHidden = null;
+  setHidden(playlistName, track.uri, false);
+  if (sourceName() !== playlistName) {
+    await selectSource(playlistName, false);
+  }
+  try {
+    const token = await getToken();
+    currentTrack = track;
+    await playFromGesture(track, token);
+    updatePlayerBar(track);
+    renderTracks();
+    highlightTracks();
+    markGridHasTrack();
+    paintVersionsButton();
+    setFeedback("Restored " + track.name, false);
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+}
+
 function apiHoldSet(seconds) {
   const until = Date.now() + seconds * 1000;
   localStorage.setItem(API_HOLD_KEY, String(until));
   paintApiCounter();
+  schedulePendingReplay();
   getToken()
     .then(token => fetch(HOLD_URL, {
       method: "POST",
@@ -4688,6 +4741,13 @@ const skipToggle = document.createElement("button");
   unhideBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Unfilter all</span>';
   unhideBtn.addEventListener("click", () => unhideAll());
 
+  const undoBtn = document.createElement("button");
+  undoBtn.type = "button";
+  undoBtn.className = "outline-btn";
+  undoBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i><span>Undo</span>';
+  undoBtn.title = "Undo last hidden song (Ctrl+Z)";
+  undoBtn.addEventListener("click", () => undoLastHide());
+
   const reverseBtn = document.createElement("button");
   reverseBtn.type = "button";
   reverseBtn.className = "outline-btn";
@@ -4815,7 +4875,7 @@ const skipToggle = document.createElement("button");
 
   songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle, playAllBtn);
 
-  songsTools.append(unhideBtn, reverseBtn, spacer, songsZoom);
+  songsTools.append(unhideBtn, undoBtn, reverseBtn, spacer, songsZoom);
 
   const songsHeader = document.createElement("div");
   songsHeader.className = "songs-header";
@@ -4932,10 +4992,23 @@ const skipToggle = document.createElement("button");
     }
     document.addEventListener("visibilitychange", async () => {
       if (document.visibilityState !== "visible") return;
+      if (pendingQueue.length && apiHoldUntil() <= Date.now()) {
+        replayPending();
+      } else {
+        schedulePendingReplay();
+      }
       try {
         await reconcileDevice();
       } catch (err) {
         setFeedback(err.message, true);
+      }
+    });
+    document.addEventListener("keydown", e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        undoLastHide();
       }
     });
     document.addEventListener("click", e => {
