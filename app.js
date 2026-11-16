@@ -1,5 +1,5 @@
-const VERSION_NUMBER = "v1.20"
-const OFFLINE = true;
+const VERSION_NUMBER = "v1.20b"
+const OFFLINE = false;
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
 const SYNC_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hidden";
@@ -238,6 +238,87 @@ function currentPlayingUri() {
     return currentTrack && currentTrack.uri;
   }
   return sdkUri || (currentTrack && currentTrack.uri);
+}
+
+let manualQueue = [];
+
+function enqueueNext(track) {
+  if (!track || !track.uri) return;
+  manualQueue = manualQueue.filter(t => t.uri !== track.uri);
+  manualQueue.unshift(track);
+  refreshNpPanel();
+  setFeedback("added to queue: " + track.name, false);
+}
+
+function closeTrackContextMenu() {
+  const existing = document.getElementById("track-context-menu");
+  if (existing) existing.remove();
+}
+
+function openTrackContextMenu(x, y, track) {
+  closeTrackContextMenu();
+  const menu = document.createElement("div");
+  menu.id = "track-context-menu";
+  menu.className = "track-context-menu";
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.innerHTML = '<i class="fa-solid fa-plus"></i><span>Add to queue</span>';
+  addBtn.addEventListener("click", ev => {
+    ev.stopPropagation();
+    enqueueNext(track);
+    closeTrackContextMenu();
+  });
+
+  menu.appendChild(addBtn);
+  document.body.appendChild(menu);
+
+  const rect = menu.getBoundingClientRect();
+  const left = Math.min(x, window.innerWidth - rect.width - 8);
+  const top = Math.min(y, window.innerHeight - rect.height - 8);
+  menu.style.left = Math.max(8, left) + "px";
+  menu.style.top = Math.max(8, top) + "px";
+
+  setTimeout(() => {
+    const dismiss = ev => {
+      if (menu.contains(ev.target)) return;
+      closeTrackContextMenu();
+      document.removeEventListener("click", dismiss);
+      document.removeEventListener("contextmenu", dismiss);
+    };
+    document.addEventListener("click", dismiss);
+    document.addEventListener("contextmenu", dismiss);
+  }, 0);
+}
+
+async function playFromManualQueue(hide) {
+  const name = sourceName();
+  const original = currentTrack;
+  if (hide !== false && original && !playAll) {
+    setHidden(name, original.uri, true);
+    lastAutoHidden = { playlistName: name, track: original };
+  }
+  const token = await getToken();
+  while (manualQueue.length) {
+    const candidate = manualQueue.shift();
+    try {
+      await playFromGesture(candidate, token);
+      currentTrack = candidate;
+      updatePlayerBar(candidate);
+      renderTracks();
+      highlightTracks();
+      return;
+    } catch (err) {
+      if (isUnplayable(err)) continue;
+      currentTrack = original;
+      updatePlayerBar(original);
+      setFeedback(err.message, true);
+      renderTracks();
+      highlightTracks();
+      return;
+    }
+  }
+  return playAdjacent(1, false);
 }
 
 const el = {
@@ -1441,7 +1522,7 @@ async function resolvePlaylistData(name, token) {
 }
 
 async function selectSource(name, play) {
-  changedPlayingNow();
+  if (play) changedPlayingNow();
   localStorage.setItem(SOURCE_KEY, name);
   const sourcesLabel = document.getElementById("sources-label");
   if (sourcesLabel) sourcesLabel.textContent = sourceName();
@@ -1449,15 +1530,17 @@ async function selectSource(name, play) {
   if (grid) grid.style.display = sourcesCollapsed ? "none" : "grid";
   const pickFirst = () => {
     const tracks = (cache[name] && cache[name].tracks) || [];
-    const first = tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
-    if (first) {
-      currentTrack = first;
-      updatePlayerBar(first);
-    }
+    return tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
   };
   const finish = async () => {
     renderTracks();
-    pickFirst();
+    if (play || !currentTrack) {
+      const first = pickFirst();
+      if (first) {
+        currentTrack = first;
+        updatePlayerBar(first);
+      }
+    }
     highlightTracks();
     markGridHasTrack();
     if (play && currentTrack) {
@@ -1476,7 +1559,13 @@ async function selectSource(name, play) {
   const entry = PLAYLISTS[name] || cache[name];
   if (entry && entry.local) {
     renderTracks();
-    pickFirst();
+    if (play || !currentTrack) {
+      const first = pickFirst();
+      if (first) {
+        currentTrack = first;
+        updatePlayerBar(first);
+      }
+    }
     highlightTracks();
     markGridHasTrack();
     if (play && currentTrack) {
@@ -1596,6 +1685,10 @@ function renderTracks() {
       });
       card.appendChild(un);
     }
+    card.addEventListener("contextmenu", ev => {
+      ev.preventDefault();
+      openTrackContextMenu(ev.clientX, ev.clientY, track);
+    });
     card.addEventListener("click", async () => {
       try {
         changedPlayingNow()
@@ -1836,33 +1929,81 @@ function renderGrid() {
         });
       });
       btn.append(img, label, badge, sync);
+      btn.classList.add("reordering");
+
+      btn.addEventListener("pointerdown", ev => {
+        if (ev.button !== 0 || ev.target.closest(".grid-minus, .grid-sync")) return;
+        ev.preventDefault();
+        const startX = ev.clientX;
+        const startY = ev.clientY;
+        let dragging = false;
+
+        const onMove = moveEv => {
+          moveEv.preventDefault();
+          if (!dragging) {
+            if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) < 6) return;
+            dragging = true;
+            btn.classList.add("moving");
+            el.grid.classList.add("has-moving");
+            const sel = window.getSelection();
+            if (sel) sel.removeAllRanges();
+          }
+
+          const buttons = [...el.grid.querySelectorAll("button[data-name]")];
+          const target = buttons.find(b => {
+            if (b === btn) return false;
+            const r = b.getBoundingClientRect();
+            return moveEv.clientX >= r.left && moveEv.clientX <= r.right &&
+                   moveEv.clientY >= r.top && moveEv.clientY <= r.bottom;
+          });
+
+          if (!target) return;
+
+          const order = buttons.map(b => b.dataset.name);
+          const fromIdx = order.indexOf(name);
+          const toIdx = order.indexOf(target.dataset.name);
+
+          if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
+            order.splice(fromIdx, 1);
+            order.splice(toIdx, 0, name);
+            
+            // Re-order DOM elements smoothly based on new array order
+            const map = new Map(buttons.map(b => [b.dataset.name, b]));
+            order.forEach(n => {
+              const node = map.get(n);
+              if (node) el.grid.appendChild(node);
+            });
+          }
+        };
+
+        const onUp = () => {
+          document.removeEventListener("pointermove", onMove);
+          document.removeEventListener("pointerup", onUp);
+          document.removeEventListener("pointercancel", onUp);
+          if (!dragging) return;
+          btn.classList.remove("moving");
+          el.grid.classList.remove("has-moving");
+          btn.dataset.justDragged = "1";
+          setTimeout(() => { delete btn.dataset.justDragged; }, 150);
+
+          const visible = [...el.grid.querySelectorAll("button[data-name]")].map(b => b.dataset.name);
+          const previous = gridOrder();
+          const hiddenOnes = previous.filter(n => !visible.includes(n));
+          saveGridOrder([...visible, ...hiddenOnes]);
+        };
+
+        document.addEventListener("pointermove", onMove);
+        document.addEventListener("pointerup", onUp);
+        document.addEventListener("pointercancel", onUp);
+      });
     } else {
       btn.append(img, label);
     }
     const has = cur && cache[name] && cache[name].tracks && cache[name].tracks.some(t => sameRecording(t, currentTrack));
     if (has) btn.classList.add("has-track");
 
-    if (reorderMode) {
-      btn.classList.add("reordering");
-      const up = document.createElement("span");
-      up.className = "reorder-arrow reorder-up";
-      up.innerHTML = '<i class="fa-solid fa-chevron-up"></i>';
-      up.addEventListener("click", ev => {
-        ev.stopPropagation();
-        moveInGridOrder(name, -1);
-      });
-      const down = document.createElement("span");
-      down.className = "reorder-arrow reorder-down";
-      down.innerHTML = '<i class="fa-solid fa-chevron-down"></i>';
-      down.addEventListener("click", ev => {
-        ev.stopPropagation();
-        moveInGridOrder(name, 1);
-      });
-      btn.append(up, down);
-    }
-
     btn.addEventListener("click", () => {
-      if (reorderMode) return;
+      if (reorderMode || btn.dataset.justDragged) return;
       onAdd(name, btn);
     });
 
@@ -2720,6 +2861,7 @@ function resetShuffleQueue(name, exclude) {
 }
 
 async function playNextShuffled(hide) {
+  if (manualQueue.length) return playFromManualQueue(hide);
   const name = sourceName();
   const tracks = playableTracks(name);
   if (!tracks.length) return;
@@ -2769,6 +2911,7 @@ function isUnplayable(err) {
 
 async function playAdjacent(dir, hide) {
   changedPlayingNow()
+  if (dir === 1 && manualQueue.length) return playFromManualQueue(hide);
   if (shuffleOn && dir === 1) return playNextShuffled(hide);
   const name = sourceName();
   const tracks = queueTracks(name);
@@ -2895,14 +3038,15 @@ function togglePreviewMode() {
 async function previewAdvance() {
   const name = sourceName();
   const tracks = queueTracks(name);
-  if (!tracks.length || !currentTrack) return false;
+  if (!tracks.length && !manualQueue.length) return false;
+  if (!currentTrack) return false;
   let idx = tracks.findIndex(t => sameRecording(t, currentTrack));
   if (idx === -1) idx = 0;
   if (hideOnSkip && !playAll) {
     setHidden(name, currentTrack.uri, true);
     lastAutoHidden = { playlistName: name, track: currentTrack };
   }
-  const candidate = tracks[(idx + 1) % tracks.length];
+  const candidate = manualQueue.length ? manualQueue.shift() : tracks[(idx + 1) % tracks.length];
   if (!candidate) return false;
   try {
     const token = await getToken();
@@ -3017,11 +3161,15 @@ async function runPreviewForCurrent() {
 
 function queueUpcoming(count) {
   count = count || 8;
+  const out = [];
+  for (const t of manualQueue) {
+    if (!out.some(o => o.uri === t.uri)) out.push(t);
+    if (out.length >= count) return out;
+  }
   const name = sourceName();
   if (shuffleOn) {
     const tracks = playableTracks(name);
     const byUri = new Map(tracks.map(t => [t.uri, t]));
-    const out = [];
     for (const uri of shuffleQueue) {
       const t = byUri.get(uri);
       if (t && !out.some(o => o.uri === t.uri)) out.push(t);
@@ -3030,15 +3178,86 @@ function queueUpcoming(count) {
     return out;
   }
   const tracks = queueTracks(name);
-  if (!tracks.length) return [];
+  if (!tracks.length) return out;
   let idx = currentTrack ? tracks.findIndex(t => sameRecording(t, currentTrack)) : 0;
   if (idx === -1) idx = 0;
-  const out = [];
-  for (let i = 1; i <= count && out.length < count && out.length < tracks.length - 1; i++) {
+  for (let i = 1; out.length < count && i <= tracks.length; i++) {
     const next = tracks[(idx + i) % tracks.length];
     if (next && !out.some(o => o.uri === next.uri)) out.push(next);
   }
   return out;
+}
+
+function removeFromQueue(track) {
+  if (!track || !track.uri) return;
+  const idx = manualQueue.findIndex(t => t.uri === track.uri);
+  if (idx !== -1) {
+    manualQueue.splice(idx, 1);
+  } else if (shuffleOn) {
+    shuffleQueue = shuffleQueue.filter(u => u !== track.uri);
+  } else {
+    const upcoming = queueUpcoming(8);
+    const qIdx = upcoming.findIndex(t => t.uri === track.uri);
+    if (qIdx !== -1) {
+      manualQueue = upcoming.slice(qIdx + 1);
+    }
+  }
+  refreshNpPanel();
+  setFeedback("removed from queue: " + track.name, false);
+}
+
+function attachQueueDrag(card, track, list) {
+  card.addEventListener("pointerdown", ev => {
+    if (ev.button !== 0 || ev.target.closest(".np-tile-btn")) return;
+    ev.preventDefault();
+    const startX = ev.clientX;
+    const startY = ev.clientY;
+    let dragging = false;
+
+    const onMove = moveEv => {
+      moveEv.preventDefault();
+      if (!dragging) {
+        if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) < 8) return;
+        dragging = true;
+        card.classList.add("moving");
+        list.classList.add("has-moving");
+        const sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+      }
+      const under = document.elementFromPoint(moveEv.clientX, moveEv.clientY);
+      const target = under && under.closest(".np-grid-list .track");
+      if (!target || target === card) return;
+      const rect = target.getBoundingClientRect();
+      const before = moveEv.clientX < rect.left + rect.width / 2;
+      if (before) {
+        if (target.previousElementSibling !== card) list.insertBefore(card, target);
+      } else {
+        if (target.nextElementSibling !== card) list.insertBefore(card, target.nextSibling);
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      if (!dragging) return;
+      card.classList.remove("moving");
+      list.classList.remove("has-moving");
+      card.dataset.justDragged = "1";
+      setTimeout(() => { delete card.dataset.justDragged; }, 150);
+
+      const orderedUris = [...list.querySelectorAll(".track")].map(el => el.dataset.uri).filter(Boolean);
+      const byUri = new Map(queueUpcoming(8).map(t => [t.uri, t]));
+      const nextManual = orderedUris.map(u => byUri.get(u)).filter(Boolean);
+      const remainder = manualQueue.filter(t => !orderedUris.includes(t.uri));
+      manualQueue = [...nextManual, ...remainder];
+      refreshNpPanel();
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+  });
 }
 
 function paintNpGrid() {
@@ -3075,6 +3294,7 @@ function paintNpGrid() {
   for (const t of tracks) {
     const card = document.createElement("div");
     card.className = "track";
+    card.dataset.uri = t.uri;
     const img = document.createElement("img");
     img.alt = "";
     bindImg(img, t.image);
@@ -3093,8 +3313,30 @@ function paintNpGrid() {
       badge.textContent = "previous";
       card.appendChild(badge);
     }
-    card.append(img, meta);
+
+    const actionBtn = document.createElement("span");
+    actionBtn.className = "np-tile-btn";
+    actionBtn.setAttribute("role", "button");
+    if (npView === "queue") {
+      actionBtn.textContent = "-";
+      actionBtn.title = "Remove from queue";
+      actionBtn.addEventListener("click", ev => {
+        ev.stopPropagation();
+        removeFromQueue(t);
+      });
+      attachQueueDrag(card, t, list);
+    } else {
+      actionBtn.textContent = "+";
+      actionBtn.title = "Add to queue";
+      actionBtn.addEventListener("click", ev => {
+        ev.stopPropagation();
+        enqueueNext(t);
+      });
+    }
+
+    card.append(img, meta, actionBtn);
     card.addEventListener("click", async () => {
+      if (card.dataset.justDragged) return;
       try {
         changedPlayingNow()
         const token = await getToken();
@@ -3138,6 +3380,7 @@ function showPreviewSettings() {
   const panel = document.createElement("div");
   panel.id = "preview-settings";
   panel.className = "preview-settings";
+  panel.addEventListener("click", e => e.stopPropagation());
 
   const timeRow = document.createElement("div");
   timeRow.className = "preview-setting-row";
@@ -3148,15 +3391,67 @@ function showPreviewSettings() {
   timeSlider.min = "1";
   timeSlider.max = "10";
   timeSlider.step = "1";
-  timeSlider.value = String(previewSeconds);
+  timeSlider.value = String(Math.min(10, Math.max(1, previewSeconds)));
+  
   const timeVal = document.createElement("span");
   timeVal.className = "preview-setting-val";
   timeVal.textContent = previewSeconds + "s";
+  timeVal.title = "Double-click to type custom seconds";
+
+  const applySeconds = val => {
+    const num = parseInt(val, 10);
+    if (Number.isFinite(num) && num > 0) {
+      previewSeconds = num;
+      localStorage.setItem("sp_preview_secs", String(previewSeconds));
+      timeVal.textContent = previewSeconds + "s";
+      if (num <= 10) {
+        timeSlider.value = String(num);
+      }
+    }
+  };
+
   timeSlider.addEventListener("input", () => {
-    previewSeconds = Number(timeSlider.value);
-    localStorage.setItem("sp_preview_secs", String(previewSeconds));
-    timeVal.textContent = previewSeconds + "s";
+    applySeconds(timeSlider.value);
   });
+
+  timeVal.addEventListener("dblclick", () => {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "1";
+    input.className = "preview-setting-input";
+    input.value = String(previewSeconds);
+
+    const commit = () => {
+      applySeconds(input.value);
+      input.replaceWith(timeVal);
+    };
+
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        input.blur();
+      } else if (e.key === "Escape") {
+        input.replaceWith(timeVal);
+      }
+    });
+
+    timeVal.replaceWith(input);
+    input.focus();
+    input.select();
+  });
+
+  const bar = el.progress.parentElement || el.progress;
+  if (bar) {
+    bar.addEventListener("click", () => {
+      if (previewSeconds > 10) {
+        previewSeconds = 5;
+        localStorage.setItem("sp_preview_secs", String(previewSeconds));
+        timeVal.textContent = previewSeconds + "s";
+        timeSlider.value = String(previewSeconds);
+      }
+    }, { capture: true });
+  }
+
   timeRow.append(timeLabel, timeSlider, timeVal);
 
   const presetRow = document.createElement("div");
@@ -3319,6 +3614,8 @@ function buildPlayer() {
   previewBtn.innerHTML = '<i class="fa-solid fa-stopwatch"></i>';
   previewBtn.title = "Preview";
 
+  let previewClickTimer = null;
+
   previewBtn.addEventListener("pointerdown", () => {
     previewLongPressed = false;
     clearTimeout(previewHoldTimer);
@@ -3329,6 +3626,7 @@ function buildPlayer() {
       showPreviewSettings();
     }, 500);
   });
+
   previewBtn.addEventListener("pointerup", () => {
     if (previewHoldTimer) {
       clearTimeout(previewHoldTimer);
@@ -3338,13 +3636,33 @@ function buildPlayer() {
       previewLongPressed = false;
       return;
     }
-    togglePreviewMode();
+    clearTimeout(previewClickTimer);
+    previewClickTimer = setTimeout(() => {
+      togglePreviewMode();
+    }, 250);
   });
+
   previewBtn.addEventListener("pointercancel", () => {
     clearTimeout(previewHoldTimer);
     previewHoldTimer = null;
     previewLongPressed = false;
+    clearTimeout(previewClickTimer);
   });
+
+  previewBtn.addEventListener("dblclick", ev => {
+    ev.stopPropagation();
+    clearTimeout(previewClickTimer);
+    if (previewHoldTimer) {
+      clearTimeout(previewHoldTimer);
+      previewHoldTimer = null;
+    }
+    previewLongPressed = false;
+    showPreviewSettings();
+    if (!previewMode) {
+      togglePreviewMode();
+    }
+  });
+
   previewBtn.addEventListener("contextmenu", ev => ev.preventDefault());
 
 const filterBtn = document.createElement("button");
@@ -3619,7 +3937,13 @@ function buildTargetBar() {
   const progressSpan = document.createElement("span");
   progressSpan.id = "songs-progress";
   progressSpan.className = "songs-progress";
-  bar.append(label, progressSpan, el.status);
+  
+  const hierarchyText = document.createElement("span");
+  hierarchyText.id = "hierarchy-status-text";
+  hierarchyText.style.cssText = "font-size: 11px; color: var(--muted); margin-left: 8px;";
+  hierarchyText.textContent = hierarchyOn() ? "Hierarchy: ON" : "";
+
+  bar.append(label, progressSpan, hierarchyText, el.status);
   el.grid.parentElement.insertBefore(bar, el.grid);
 
   const bottom = document.createElement("div");
@@ -4335,6 +4659,8 @@ async function openTool(toolId, token) {
 function paintToolsBadge() {
   const btn = document.querySelector('[data-tool="tools"]');
   if (!btn) return;
+  
+  
   const existing = btn.querySelector(".hierarchy-dot");
   if (hierarchyOn() && !existing) {
     const dot = document.createElement("span");
@@ -4620,8 +4946,10 @@ async function startOfflineSession() {
   } catch (_) {}
 
   localStorage.setItem(SOURCE_KEY, "nu vygr");
-  currentTrack = cache["nu vygr"].tracks[0];
-  updatePlayerBar(currentTrack);
+  if (!currentTrack) {
+    currentTrack = cache["nu vygr"].tracks[0];
+    updatePlayerBar(currentTrack);
+  }
   renderGrid();
   renderSourceGrid();
   renderTracks();
@@ -4651,7 +4979,7 @@ async function boot() {
 
   const songsToggle = document.createElement("button");
   songsToggle.type = "button";
-  songsToggle.className = "songs-toggle";
+  songsToggle.className = "outline-btn";
   songsToggle.innerHTML = '<i class="fa-solid fa-list-ul"></i><span>Songs</span>';
 
 const skipToggle = document.createElement("button");
@@ -4929,6 +5257,7 @@ const skipToggle = document.createElement("button");
 
   const toolsBtn = document.createElement("button");
   toolsBtn.type = "button";
+  toolsBtn.className = "outline-btn";
   toolsBtn.innerHTML = '<i class="fa-solid fa-toolbox"></i><span> Tools</span>';
   toolsBtn.dataset.tool = "tools";
   const paintTools = () => toolsBtn.classList.toggle("active", !toolsCollapsed);
@@ -4945,6 +5274,7 @@ const skipToggle = document.createElement("button");
 
   const reloadBtn = document.createElement("button");
   reloadBtn.type = "button";
+  reloadBtn.className = "outline-btn";
   reloadBtn.innerHTML = '<i class="fa-solid fa-rotate"></i><span> Reload grid</span>';
   reloadBtn.addEventListener("click", async () => {
     reloadBtn.disabled = true;
