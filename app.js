@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.18"
+const VERSION_NUMBER = "v1.18b"
 const OFFLINE = false;
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -1129,6 +1129,8 @@ function sourceName() {
   return SOURCE_CANDIDATES[0];
 }
 
+const LOCAL_PLAYLISTS_DELETE_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/localplaylists_delete";
+
 function renderSourceGrid() {
   let grid = document.getElementById("source-grid");
   if (!grid) {
@@ -1166,7 +1168,7 @@ function renderSourceGrid() {
       minus.setAttribute("role", "button");
       minus.textContent = "-";
       minus.title = "Delete local playlist";
-      minus.style.cssText = "position:absolute;top:6px;left:6px;z-index:2;background:rgba(38,46,58,0.65);border:none;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#e8ecf2;font-weight:bold;cursor:pointer;";
+      minus.style.cssText = "position:absolute;top:6px;left:6px;z-index:2;background:rgba(38,46,58,0.5);border:none;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#e8ecf2;font-weight:bold;cursor:pointer;";
       btn.style.position = "relative";
       minus.addEventListener("click", async ev => {
         ev.stopPropagation();
@@ -1178,7 +1180,7 @@ function renderSourceGrid() {
           onConfirm: async () => {
             try {
               const token = !OFFLINE ? await getToken() : "";
-              await fetch("https://emnlvega.wixsite.com/my-site-2/_functions/localplaylists_delete", {
+              await fetch(LOCAL_PLAYLISTS_DELETE_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ accessToken: token, playlistId: entry.id })
