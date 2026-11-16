@@ -314,7 +314,7 @@ select:focus, input:focus, textarea:focus {
 }
 
 #player-view .np-controls .np-nav {
-  background: transparent;
+  background: var(--bg);
   color: var(--text);
   border: 2px solid var(--accent);
   box-shadow: none;
@@ -335,7 +335,6 @@ select:focus, input:focus, textarea:focus {
 
 #player-view .np-controls .np-nav:hover,
 #player-view .np-controls .np-nav:active {
-  background: transparent;
   color: var(--accent);
   border-color: var(--accent);
   transform: translateY(-120%);

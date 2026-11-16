@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.18b"
+const VERSION_NUMBER = "v1.18d"
 const OFFLINE = false;
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -2080,7 +2080,6 @@ function updatePlayerBar(track) {
   paintVersionsButton();
   resetPresets();
 }
-
 function handleEnd() {
   const uri = currentPlayingUri();
   if (!uri || endHandledFor === uri) return;
@@ -2371,6 +2370,8 @@ function findCachedTrack(uri) {
   return currentTrack && currentTrack.uri === uri ? currentTrack : null;
 }
 
+let isHandlingEnd = false;
+
 function startProgress(state) {
   clearInterval(progressTimer);
   const duration = currentTrack ? currentTrack.durationMs : state.duration;
@@ -2384,8 +2385,13 @@ function startProgress(state) {
     el.progress.style.width = (clamped / dur * 100) + "%";
     el.time.textContent = formatMs(clamped) + " / " + formatMs(dur);
     paintPresetsFromPosition(clamped, dur);
+
     if (!lastState.paused && dur > 1000 && clamped >= dur - 300) {
-      handleEnd();
+      if (!isHandlingEnd && currentPlayingUri() && endHandledFor !== currentPlayingUri()) {
+        isHandlingEnd = true;
+        handleEnd();
+        setTimeout(() => { isHandlingEnd = false; }, 2000);
+      }
     }
   };
   paint();
@@ -3329,6 +3335,27 @@ function buildPlayer() {
   });
   previewBtn.addEventListener("contextmenu", ev => ev.preventDefault());
 
+const filterBtn = document.createElement("button");
+  filterBtn.type = "button";
+  filterBtn.className = "np-shuffle";
+
+  window.paintPlayerFilter = () => {
+    filterBtn.classList.toggle("active", hideOnSkip);
+    filterBtn.classList.toggle("on", hideOnSkip);
+    filterBtn.innerHTML = '<i class="fa-solid fa-filter"></i>';
+    filterBtn.title = hideOnSkip ? "Filter mode: ON" : "Filter mode: OFF";
+  };
+
+  filterBtn.addEventListener("click", () => {
+    hideOnSkip = !hideOnSkip;
+    localStorage.setItem("sp_hide_on_skip", hideOnSkip ? "1" : "0");
+    if (window.syncAllFilterButtons) window.syncAllFilterButtons();
+    else window.paintPlayerFilter();
+    setFeedback(hideOnSkip ? "filter mode on" : "filter mode off", false);
+  });
+
+  window.paintPlayerFilter();
+
   const volumeBtn = document.createElement("button");
   volumeBtn.type = "button";
   volumeBtn.className = "np-shuffle";
@@ -3401,7 +3428,7 @@ function buildPlayer() {
     if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
     paintRnd();
   });
-  controls.append(prev, toggle, rnd, queueBtn,previewBtn, volumeBtn, next);
+ controls.append(prev, toggle, filterBtn, rnd, queueBtn, previewBtn, volumeBtn, next);
   center.appendChild(seeks);
   const volume = document.createElement("div");
   volume.className = "np-volume";
@@ -4573,17 +4600,31 @@ async function boot() {
   songsToggle.className = "songs-toggle";
   songsToggle.innerHTML = '<i class="fa-solid fa-list-ul"></i><span>Songs</span>';
 
-  const skipToggle = document.createElement("button");
+const skipToggle = document.createElement("button");
   skipToggle.type = "button";
   skipToggle.className = "outline-btn";
   skipToggle.innerHTML = '<i class="fa-solid fa-filter"></i><span>Filter</span>';
-  const paintSkip = () => skipToggle.classList.toggle("on", hideOnSkip);
+  
+  const paintSkip = () => {
+    skipToggle.classList.toggle("on", hideOnSkip);
+    if (window.paintPlayerFilter) window.paintPlayerFilter();
+  };
+  
   paintSkip();
+  
   skipToggle.addEventListener("click", () => {
     hideOnSkip = !hideOnSkip;
     localStorage.setItem("sp_hide_on_skip", hideOnSkip ? "1" : "0");
     paintSkip();
   });
+
+  window.syncAllFilterButtons = () => {
+    skipToggle.classList.toggle("on", hideOnSkip);
+    if (window.paintPlayerFilter) window.paintPlayerFilter();
+  };
+  
+  // Initial paint for player button
+  window.paintPlayerFilter();
 
   const playerZoom = document.createElement("div");
   playerZoom.className = "zoom-group";
