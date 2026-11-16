@@ -1,5 +1,5 @@
 const VERSION_NUMBER = "v1.20c"
-const OFFLINE = true;
+const OFFLINE = false;
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
 const SYNC_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hidden";
