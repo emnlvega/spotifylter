@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.21b"
+const VERSION_NUMBER = "v1.21d"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -119,6 +119,8 @@ let previewHoldTimer = null;
 let previewLongPressed = false;
 let paintTargetBar = () => {};
 let paintApiCounter = () => {};
+
+
 
 function hslToRgb(h, s, l) {
   h = ((h % 360) + 360) % 360;
@@ -3409,7 +3411,7 @@ function paintPresetsFromPosition(ms, durationMs) {
 function resetPresets() {
   presetTracking = false;
   lastPaintedPreset = null;
-  document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.add("active"));
+  document.querySelectorAll("#player-view .np-preset").forEach(b => b.classList.remove("active"));
 }
 
 function paintRepeatButton() {
@@ -4198,7 +4200,7 @@ const filterBtn = document.createElement("button");
   const presetBtns = {};
   const paintPresets = mode => {
     for (const [p, btn] of Object.entries(presetBtns)) {
-      btn.classList.toggle("active", !mode || p === mode);
+      btn.classList.toggle("active", mode ? p === mode : false);
     }
   };
   for (const [part] of presets) {
@@ -4488,16 +4490,10 @@ function buildHeader() {
   logo.className = "header-logo";
   logo.innerHTML = LOGO_SVG;
 
-  const offlineBadge = document.createElement("span");
-  offlineBadge.id = "offline-mode-badge";
-  offlineBadge.className = "offline-badge";
-  offlineBadge.textContent = "OFFLINE MODE";
-  offlineBadge.style.cssText = "display: " + (OFFLINE ? "inline-block" : "none") + "; background: var(--bg); color: var(--white); font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 8px; letter-spacing: 0.05em; vertical-align: middle;";
-
   const wrap = document.createElement("div");
   wrap.className = "header-text";
 
-  header.append(logo, offlineBadge, wrap);
+  header.append(logo, wrap);
 
   const versionSpan = document.createElement("span");
   versionSpan.className = "header-version";
@@ -4510,8 +4506,25 @@ function buildHeader() {
   out.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i><span>Sign out</span>';
   out.addEventListener("click", signOut);
 
-  header.append(versionSpan, out);
+  header.append(out);
   el.main.insertBefore(header, el.main.firstChild);
+
+  const offlineBadge = document.createElement("div");
+  offlineBadge.id = "offline-mode-badge";
+  offlineBadge.className = "offline-badge-full";
+  offlineBadge.textContent = "OFFLINE MODE";
+  offlineBadge.style.cssText = "display: " + (OFFLINE ? "block" : "none") + "; width: calc(100% + 48px); margin: -20px -24px 20px -24px; background: var(--bg); color: var(--white); font-size: 10px; font-weight: 700; padding: 6px 24px; text-align: center; letter-spacing: 0.05em; box-sizing: border-box;";
+  header.insertAdjacentElement("afterend", offlineBadge);
+
+  let bottomVersion = document.getElementById("bottom-version-footer");
+  if (!bottomVersion) {
+    bottomVersion = document.createElement("div");
+    bottomVersion.id = "bottom-version-footer";
+    bottomVersion.style.cssText = "text-align: left; color: var(--accent); font-size: 11px; font-family: monospace; margin: 20px 0 10px 0; padding: 1px;";
+    el.main.appendChild(bottomVersion);
+  }
+  bottomVersion.textContent = VERSION_NUMBER;
+
   document.querySelectorAll("h1, h2, h3, header").forEach(node => {
     if (node.closest("#app-header")) return;
     if (node.textContent.trim().startsWith("spotifylter")) node.style.display = "none";

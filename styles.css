@@ -172,7 +172,7 @@ html {
         radial-gradient(circle at var(--x-7) var(--y-7), var(--darkG) var(--s-start-7), transparent var(--s-end-7)), 
         radial-gradient(circle at var(--x-8) var(--y-8), var(--darkG) var(--s-start-8), transparent var(--s-end-8)), 
         radial-gradient(circle at var(--x-9) var(--y-9), var(--blackG) var(--s-start-9), transparent var(--s-end-9));
-    animation: ani-your_css_selector_here 25s linear infinite alternate;
+    animation: ani-your_css_selector_here 20s linear infinite alternate;
     background-blend-mode: normal;
     background-attachment: fixed;
     contain: paint;
@@ -419,10 +419,8 @@ select:focus, input:focus, textarea:focus {
 #player-view .np-toggle {
   background: var(--accent);
   color: var(--white);
-  width: 80px;
+  width: 72px;
 }
-
-
 
 #player-view .np-toggle:hover {
   background: var(--accent);
@@ -580,6 +578,8 @@ select:focus, input:focus, textarea:focus {
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 5px;
   margin-top: 5px;
+  
+  
 }
 
 #target-grid button {
@@ -761,6 +761,8 @@ input[type="range"]::-moz-range-thumb {
   transition: background var(--fast), color var(--fast);
 }
 
+
+
 #player-view .np-shuffle:hover {
   background: var(--accent);
 }
@@ -778,7 +780,11 @@ input[type="range"]::-moz-range-thumb {
 
 #source-grid {
   display: grid;
-  
+  background: 
+    linear-gradient(90deg, var(--surface), color-mix(in srgb, var(--blackG) 80%, transparent), var(--surface)),
+    var(--surface);
+  border-radius: var(--r-md);
+  padding: 8px;
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
   gap: 8px;
   margin: 12px 0;
@@ -1509,14 +1515,16 @@ body.auth-mode #auth-box {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--surface);
+  background: 
+    linear-gradient(90deg, var(--surface), color-mix(in srgb, var(--blackG) 80%, transparent), var(--surface)),
+    var(--surface);
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   border-radius: var(--r-md);
-
 }
+
 .songs-header .songs-row {
   margin: 0;
   width: 100%;
@@ -1888,6 +1896,10 @@ body.auth-mode #auth-box {
 
 #player-view .np-nav {
   border-radius: var(--r-sm);
+}
+
+#player-view .np-seeks {
+  margin-top: 8px;
 }
 
 .version-play {
@@ -2350,3 +2362,4 @@ body.auth-mode #auth-box {
   min-width: 0;
   overflow: hidden;
 }
+
