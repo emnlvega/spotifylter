@@ -85,7 +85,8 @@ let pendingTrackUri = null;
 let pendingTrackUriAt = 0;
 let sdkStaleUri = null;
 let sourcesCollapsed = true;
-let toolsCollapsed = localStorage.getItem("sp_tools_collapsed") !== "0";
+//let toolsCollapsed = localStorage.getItem("sp_tools_collapsed") !== "0";
+let toolsCollapsed = 1;
 let playAll = localStorage.getItem("sp_play_all") === "1";
 let reverseOrder = localStorage.getItem("sp_reverse") === "1";
 let songFilter = "";
@@ -4371,7 +4372,7 @@ function buildSourcesBar() {
     sourcesCollapsed = true;
     localStorage.setItem("sp_sources_collapsed", "1");
   } else {
-    sourcesCollapsed = localStorage.getItem("sp_sources_collapsed") !== "0";
+    sourcesCollapsed = localStorage.getItem("sp_sources_collapsed") !== "1";
   }
 
   const label = document.createElement("span");
