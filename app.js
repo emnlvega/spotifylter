@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.21d"
+const VERSION_NUMBER = "v1.21e"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -1190,6 +1190,16 @@ async function playFromGesture(track, token, positionMs) {
     markGridHasTrack();
     paintVersionsButton();
     applyAdaptiveColor(track);
+    lastState = {
+      paused: false,
+      position: 0,
+      duration: track.durationMs,
+      timestamp: Date.now(),
+      track_window: { current_track: { uri: track.uri } }
+    };
+    startProgress(lastState);
+    const toggleIcon = document.querySelector("#player-view .np-toggle i");
+    if (toggleIcon) toggleIcon.className = "fa-solid fa-pause";
     setFeedback("Playing locally (offline)", false);
     return;
   }
@@ -1201,6 +1211,16 @@ async function playFromGesture(track, token, positionMs) {
     await playTrack(track.uri, token, positionMs);
     pushRecent(track);
     applyAdaptiveColor(track);
+    lastState = {
+      paused: false,
+      position: typeof positionMs === "number" ? positionMs : 0,
+      duration: track.durationMs,
+      timestamp: Date.now(),
+      track_window: { current_track: { uri: track.uri } }
+    };
+    startProgress(lastState);
+    const toggleIcon = document.querySelector("#player-view .np-toggle i");
+    if (toggleIcon) toggleIcon.className = "fa-solid fa-pause";
   } catch (err) {
     pendingTrackUri = null;
     pendingTrackUriAt = 0;
@@ -4370,12 +4390,8 @@ function buildSourcesBar() {
   const bar = document.createElement("div");
   bar.className = "sources-bar";
   
-  if (localStorage.getItem("sp_sources_collapsed") === null) {
-    sourcesCollapsed = true;
-    localStorage.setItem("sp_sources_collapsed", "1");
-  } else {
-    sourcesCollapsed = localStorage.getItem("sp_sources_collapsed") !== "1";
-  }
+  sourcesCollapsed = true;
+  localStorage.setItem("sp_sources_collapsed", "1");
 
   const label = document.createElement("span");
   label.className = "sources-label";

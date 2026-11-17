@@ -2363,3 +2363,68 @@ body.auth-mode #auth-box {
   overflow: hidden;
 }
 
+@keyframes fadeInSmooth {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(29, 185, 84, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(29, 185, 84, 0); }
+}
+
+@keyframes floatGentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+#track-list .track,
+#target-grid button,
+.tool-tile,
+.source-tile,
+#auth-box,
+.tool-panel {
+  animation: fadeInSmooth 0.3s ease-out both;
+}
+
+#track-list .track:hover,
+#target-grid button:hover,
+.tool-tile:hover,
+.source-tile:hover,
+#recently-grid .track:hover,
+.np-grid-list .track:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+button, 
+.target-toggle, 
+.skip-toggle, 
+.outline-btn {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button:active:not(:disabled),
+.outline-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+
+#player-view .np-toggle:hover {
+  animation: none;
+  transform: scale(1.04);
+}
+
+.versions-panel,
+.tool-panel,
+.track-context-menu {
+  animation: fadeInSmooth 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  transition: transform 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
