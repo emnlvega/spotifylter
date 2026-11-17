@@ -419,8 +419,10 @@ select:focus, input:focus, textarea:focus {
 #player-view .np-toggle {
   background: var(--accent);
   color: var(--white);
-  width: 100px;
+  width: 80px;
 }
+
+
 
 #player-view .np-toggle:hover {
   background: var(--accent);
