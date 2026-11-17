@@ -5421,8 +5421,81 @@ function buildApiCounter() {
 
 async function startOfflineSession() {
   showApp();
-  setStatus("OFFLINE - Local mode");
+  setStatus("OFFLINE - Reading from Wix...");
   readCache();
+
+  let token = null;
+  try {
+    const rawToken = localStorage.getItem("sp_token");
+    if (rawToken) {
+      const t = JSON.parse(rawToken);
+      token = t.access;
+    }
+  } catch (_) {}
+
+  if (token) {
+    try {
+      const localRes = await fetch(LOCAL_PLAYLISTS_URL + "?accessToken=" + encodeURIComponent(token));
+      if (localRes.ok) {
+        const data = await localRes.json();
+        if (!data.error && data.items) {
+          for (const item of data.items) {
+            const label = item.label;
+            PLAYLISTS[label] = { id: item.playlistId, label, image: item.image, local: true };
+            if (!SOURCE_CANDIDATES.includes(label)) SOURCE_CANDIDATES.push(label);
+            cache[label] = {
+              id: item.playlistId,
+              label,
+              image: item.image,
+              loadedAt: item.loadedAt,
+              total: item.tracks.length,
+              tracks: item.tracks,
+              local: true
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[offline] Wix local playlists fetch failed, falling back to cache", e);
+    }
+
+    try {
+      const indexRes = await fetch(PLAYLIST_DATA_INDEX_URL + "?accessToken=" + encodeURIComponent(token));
+      if (indexRes.ok) {
+        const indexJson = await indexRes.json();
+        if (!indexJson.error && indexJson.items) {
+          for (const item of indexJson.items) {
+            const name = Object.keys(PLAYLISTS).find(n => PLAYLISTS[n].id === item.playlistId);
+            if (name && (!cache[name] || Number(cache[name].loadedAt || 0) < Number(item.loadedAt || 0))) {
+              const dataRes = await fetch(PLAYLIST_DATA_URL + "?accessToken=" + encodeURIComponent(token) + "&playlistId=" + encodeURIComponent(item.playlistId));
+              if (dataRes.ok) {
+                const dataJson = await dataRes.json();
+                if (!dataJson.error && dataJson.data) {
+                  const parsed = JSON.parse(dataJson.data);
+                  if (parsed && Array.isArray(parsed.tracks)) {
+                    cache[name] = {
+                      id: item.playlistId,
+                      label: parsed.label || name,
+                      image: parsed.image || null,
+                      loadedAt: Number(parsed.loadedAt) || Date.now(),
+                      total: parsed.total || parsed.tracks.length,
+                      snapshot_id: parsed.snapshot_id || null,
+                      tracks: parsed.tracks
+                    };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[offline] Wix playlist data fetch failed, falling back to cache", e);
+    }
+  }
+
+  writeCache();
+
   const cachedNames = Object.keys(cache);
   if (cachedNames.length > 0) {
     for (const name of cachedNames) {
@@ -5434,29 +5507,7 @@ async function startOfflineSession() {
       }
     }
   }
-  try {
-    const res = await fetch(LOCAL_PLAYLISTS_URL);
-    if (res.ok) {
-      const data = await res.json();
-      if (!data.error && data.items) {
-        for (const item of data.items) {
-          const label = item.label;
-          PLAYLISTS[label] = { id: item.playlistId, label, image: item.image, local: true };
-          if (!SOURCE_CANDIDATES.includes(label)) SOURCE_CANDIDATES.push(label);
-          cache[label] = {
-            id: item.playlistId,
-            label,
-            image: item.image,
-            loadedAt: item.loadedAt,
-            total: item.tracks.length,
-            tracks: item.tracks,
-            local: true
-          };
-        }
-        writeCache();
-      }
-    }
-  } catch (_) {}
+
   if (!SOURCE_CANDIDATES.length) {
     SOURCE_CANDIDATES.push("playlist");
   }
@@ -5474,6 +5525,7 @@ async function startOfflineSession() {
   paintVersionsButton();
   const sourcesLabel = document.getElementById("sources-label");
   if (sourcesLabel) sourcesLabel.textContent = sourceName();
+  setStatus("OFFLINE - Ready");
 }
 
 async function boot() {
