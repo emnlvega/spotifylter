@@ -2,15 +2,15 @@
   --bg: #080808;
   --surface: #070708;
   --surface-2: #0f1013;
-  --line: #182c1e;
+  --line: rgb(24, 44, 30);
   --text: #e8ecf2;
-  --muted: #48ac55;
+  --muted: rgb(72, 173, 86);
   --white: #ffffff;
   --grey: #777c8b;
-  --accent: #1db954;
-  --action: #1a9143;
-  --darkG: #166632;
-  --blackG: #0e271b;
+  --accent: rgb(29, 185, 84);
+  --action: rgb(26, 145, 67);
+  --darkG: rgb(22, 102, 50);
+  --blackG: rgb(14, 39, 27);
   --yellow: #d29922;
   --red: #da3633;
   --r-sm: 6px;
@@ -20,15 +20,165 @@
   --fast: .12s ease;
 }
 
-html {
-  background: var(--bg);
-  overscroll-behavior-y: none;
+@keyframes ani-your_css_selector_here {
+    0% {
+        --x-0: 93%;
+        --y-0: 93%;
+        --s-start-0: 14.489998991212337%;
+        --s-end-0: 72%;
+        --x-1: 26%;
+        --y-1: 9%;
+        --s-start-1: 0%;
+        --s-end-1: 45%;
+        --x-2: 15%;
+        --y-2: 79%;
+        --s-start-2: 2.9253667596993065%;
+        --s-end-2: 22.388851682060018%;
+        --x-3: 40%;
+        --y-3: 104%;
+        --s-start-3: 3.985353824694249%;
+        --s-end-3: 47.580278608924694%;
+        --x-4: 0%;
+        --y-4: 60%;
+        --s-start-4: 2.391200382592061%;
+        --s-end-4: 29.307684556768592%;
+        --x-5: 92%;
+        --y-5: 37%;
+        --s-start-5: 2.9253667596993065%;
+        --s-end-5: 22.388851682060018%;
+        --x-6: 101%;
+        --y-6: 16%;
+        --s-start-6: 13.173642363290591%;
+        --s-end-6: 31.747336520355095%;
+        --x-7: 90%;
+        --y-7: 13%;
+        --s-start-7: 1%;
+        --s-end-7: 31%;
+        --x-8: 104%;
+        --y-8: 56%;
+        --s-start-8: 3.985353824694249%;
+        --s-end-8: 13.103042116379756%;
+        --x-9: 97%;
+        --y-9: 19%;
+        --s-start-9: 18.597054544690312%;
+        --s-end-9: 31%;
+    }
+
+    100% {
+        --x-0: 7%;
+        --y-0: 9%;
+        --s-start-0: 2.391200382592061%;
+        --s-end-0: 43.902064173373226%;
+        --x-1: 96%;
+        --y-1: 93%;
+        --s-start-1: 9%;
+        --s-end-1: 54.805582404585024%;
+        --x-2: -2%;
+        --y-2: 103%;
+        --s-start-2: 3%;
+        --s-end-2: 26.722813338714598%;
+        --x-3: 33%;
+        --y-3: 82%;
+        --s-start-3: 2.391200382592061%;
+        --s-end-3: 32.0689540200964%;
+        --x-4: 37%;
+        --y-4: 81%;
+        --s-start-4: 4.40642490323111%;
+        --s-end-4: 37.23528104246256%;
+        --x-5: 54%;
+        --y-5: 99%;
+        --s-start-5: 3%;
+        --s-end-5: 32.537089799783296%;
+        --x-6: 104%;
+        --y-6: 43%;
+        --s-start-6: 6%;
+        --s-end-6: 42.501105312974815%;
+        --x-7: 104%;
+        --y-7: -16%;
+        --s-start-7: 5%;
+        --s-end-7: 13.10107024898374%;
+        --x-8: 97%;
+        --y-8: 30%;
+        --s-start-8: 2.391200382592061%;
+        --s-end-8: 27.141813016850573%;
+        --x-9: 78%;
+        --y-9: 4%;
+        --s-start-9: 5%;
+        --s-end-9: 21.32164536610654%;
+    }
 }
 
-body {
-  background: linear-gradient(45deg, var(--blackG) 0%, var(--bg) 35%, var(--bg) 65%, var(--blackG) 100%);
-  background-attachment: fixed;
+/* Retain property definitions only for coordinates/percentages so animation works smoothly */
+@property --x-0 { syntax: '<percentage>'; inherits: false; initial-value: 93%; }
+@property --y-0 { syntax: '<percentage>'; inherits: false; initial-value: 93%; }
+@property --s-start-0 { syntax: '<percentage>'; inherits: false; initial-value: 14.49%; }
+@property --s-end-0 { syntax: '<percentage>'; inherits: false; initial-value: 72%; }
+
+@property --x-1 { syntax: '<percentage>'; inherits: false; initial-value: 26%; }
+@property --y-1 { syntax: '<percentage>'; inherits: false; initial-value: 9%; }
+@property --s-start-1 { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+@property --s-end-1 { syntax: '<percentage>'; inherits: false; initial-value: 45%; }
+
+@property --x-2 { syntax: '<percentage>'; inherits: false; initial-value: 15%; }
+@property --y-2 { syntax: '<percentage>'; inherits: false; initial-value: 79%; }
+@property --s-start-2 { syntax: '<percentage>'; inherits: false; initial-value: 2.93%; }
+@property --s-end-2 { syntax: '<percentage>'; inherits: false; initial-value: 22.39%; }
+
+@property --x-3 { syntax: '<percentage>'; inherits: false; initial-value: 40%; }
+@property --y-3 { syntax: '<percentage>'; inherits: false; initial-value: 104%; }
+@property --s-start-3 { syntax: '<percentage>'; inherits: false; initial-value: 3.99%; }
+@property --s-end-3 { syntax: '<percentage>'; inherits: false; initial-value: 47.58%; }
+
+@property --x-4 { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+@property --y-4 { syntax: '<percentage>'; inherits: false; initial-value: 60%; }
+@property --s-start-4 { syntax: '<percentage>'; inherits: false; initial-value: 2.39%; }
+@property --s-end-4 { syntax: '<percentage>'; inherits: false; initial-value: 29.31%; }
+
+@property --x-5 { syntax: '<percentage>'; inherits: false; initial-value: 92%; }
+@property --y-5 { syntax: '<percentage>'; inherits: false; initial-value: 37%; }
+@property --s-start-5 { syntax: '<percentage>'; inherits: false; initial-value: 2.93%; }
+@property --s-end-5 { syntax: '<percentage>'; inherits: false; initial-value: 22.39%; }
+
+@property --x-6 { syntax: '<percentage>'; inherits: false; initial-value: 101%; }
+@property --y-6 { syntax: '<percentage>'; inherits: false; initial-value: 16%; }
+@property --s-start-6 { syntax: '<percentage>'; inherits: false; initial-value: 13.17%; }
+@property --s-end-6 { syntax: '<percentage>'; inherits: false; initial-value: 31.75%; }
+
+@property --x-7 { syntax: '<percentage>'; inherits: false; initial-value: 90%; }
+@property --y-7 { syntax: '<percentage>'; inherits: false; initial-value: 13%; }
+@property --s-start-7 { syntax: '<percentage>'; inherits: false; initial-value: 1%; }
+@property --s-end-7 { syntax: '<percentage>'; inherits: false; initial-value: 31%; }
+
+@property --x-8 { syntax: '<percentage>'; inherits: false; initial-value: 104%; }
+@property --y-8 { syntax: '<percentage>'; inherits: false; initial-value: 56%; }
+@property --s-start-8 { syntax: '<percentage>'; inherits: false; initial-value: 3.99%; }
+@property --s-end-8 { syntax: '<percentage>'; inherits: false; initial-value: 13.10%; }
+
+@property --x-9 { syntax: '<percentage>'; inherits: false; initial-value: 97%; }
+@property --y-9 { syntax: '<percentage>'; inherits: false; initial-value: 19%; }
+@property --s-start-9 { syntax: '<percentage>'; inherits: false; initial-value: 18.60%; }
+@property --s-end-9 { syntax: '<percentage>'; inherits: false; initial-value: 31%; }
+
+html {
+    background-color: var(--bg);
+    background-image: 
+        radial-gradient(circle at var(--x-0) var(--y-0), var(--bg) var(--s-start-0), transparent var(--s-end-0)), 
+        radial-gradient(circle at var(--x-1) var(--y-1), var(--bg) var(--s-start-1), transparent var(--s-end-1)), 
+        radial-gradient(circle at var(--x-2) var(--y-2), var(--darkG) var(--s-start-2), transparent var(--s-end-2)), 
+        radial-gradient(circle at var(--x-3) var(--y-3), var(--darkG) var(--s-start-3), transparent var(--s-end-3)), 
+        radial-gradient(circle at var(--x-4) var(--y-4), var(--blackG) var(--s-start-4), transparent var(--s-end-4)), 
+        radial-gradient(circle at var(--x-5) var(--y-5), var(--darkG) var(--s-start-5), transparent var(--s-end-5)), 
+        radial-gradient(circle at var(--x-6) var(--y-6), var(--darkG) var(--s-start-6), transparent var(--s-end-6)), 
+        radial-gradient(circle at var(--x-7) var(--y-7), var(--darkG) var(--s-start-7), transparent var(--s-end-7)), 
+        radial-gradient(circle at var(--x-8) var(--y-8), var(--darkG) var(--s-start-8), transparent var(--s-end-8)), 
+        radial-gradient(circle at var(--x-9) var(--y-9), var(--blackG) var(--s-start-9), transparent var(--s-end-9));
+    animation: ani-your_css_selector_here 25s linear infinite alternate;
+    background-blend-mode: normal;
+    background-attachment: fixed;
+    contain: paint;
 }
+
+
 
 body::after {
   content: "";
@@ -268,7 +418,7 @@ select:focus, input:focus, textarea:focus {
 
 #player-view .np-toggle {
   background: var(--accent);
-  color: var(--bg);
+  color: var(--white);
 }
 
 #player-view .np-toggle:hover {
@@ -509,7 +659,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--action);
+  background: var(--white);
   cursor: pointer;
 }
 
@@ -526,7 +676,7 @@ input[type="range"]::-moz-range-thumb {
   body { padding: 14px; }
   #player-view { padding: 24px 0; }
   #player-view .np-card { padding: 0; }
-  #player-view .np-controls .np-nav {
+#player-view .np-controls .np-nav {
     position: absolute;
     top: 125px; 
     transform: translateY(-50%);
@@ -535,7 +685,11 @@ input[type="range"]::-moz-range-thumb {
     padding: 10px 8px;
     font-size: 14px;
   }
-  #player-view .np-nav:hover { transform: translateY(-1px); }
+  #player-view .np-controls .np-nav:hover,
+  #player-view .np-controls .np-nav:active { 
+    transform: translateY(-50%); 
+    color: var(--white);
+  }
   :root { --np-art: 250px; }
   #player-view .np-controls,
   #player-view .np-seeks { flex-wrap: wrap; justify-content: center; }
@@ -580,7 +734,7 @@ input[type="range"]::-moz-range-thumb {
 #player-view .np-progress #progress-bar {
   height: 100%;
   width: 0;
-  background: var(--accent);
+  background: var(--white);
   border-radius: 3px;
   transition: width .1s linear;
 }
@@ -611,7 +765,7 @@ input[type="range"]::-moz-range-thumb {
 
 #player-view .np-shuffle.active {
   background: var(--accent);
-  color: var(--blackG);
+  color: var(--white);
 }
 
 #source-select {
@@ -642,7 +796,7 @@ input[type="range"]::-moz-range-thumb {
   border-color: var(--action);
 }
 .source-tile.active {
-  border-color: var(--accent);
+  background: var(--accent);
 }
 .source-tile img {
   width: 100%;
@@ -672,10 +826,10 @@ input[type="range"]::-moz-range-thumb {
   min-width: 56px;
   height: 30px;
   padding: 0;
-  background: var(--surface-2);
+  background: var(--blackG);
   color: transparent;
   border: none;
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--darkG);
   border-radius: 0;
   box-shadow: none;
   cursor: pointer;
@@ -688,7 +842,7 @@ input[type="range"]::-moz-range-thumb {
   background: var(--darkG);
 }
 #player-view .np-preset-pill button.np-preset.active {
-  background: var(--accent);
+  background: var(--white);
 }
 
 .skip-toggle {
@@ -1352,7 +1506,7 @@ body.auth-mode #auth-box {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: transparent;
+  background: var(--surface);
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -1750,7 +1904,7 @@ body.auth-mode #auth-box {
   min-width: 40px;
   height: 32px;
   padding: 0;
-  background: var(--darkG);
+  background: var(--accent);
   color: transparent;
   box-shadow: none;
   font-size: 0;
@@ -1759,7 +1913,7 @@ body.auth-mode #auth-box {
   transition: opacity var(--fast);
 }
 #player-view .np-seeks button.np-preset-adj:hover {
-  opacity: 0.9;
+  opacity: 0.7;
 }
 
 #player-view .np-seeks button.np-preset-back {
@@ -1888,6 +2042,8 @@ body.auth-mode #auth-box {
   font-size: 12px;
   padding: 20px;
 }
+
+
 .np-rep-badge {
   position: absolute;
   top: -2px;
@@ -2164,4 +2320,30 @@ body.auth-mode #auth-box {
 }
 .outline-btn.reverse-btn-custom:hover i {
   color: var(--bg);
+}
+
+/* Ensure recents and queue grid card images are strictly constrained */
+#recently-grid .track img,
+.np-grid-list .track img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  display: block;
+}
+
+/* Ensure track card wrappers inside recents/queue prevent flex blowout */
+#recently-grid .track,
+.np-grid-list .track {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#recently-grid .track > div,
+.np-grid-list .track > div {
+  min-width: 0;
+  overflow: hidden;
 }

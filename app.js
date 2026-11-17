@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.20c"
+const VERSION_NUMBER = "v1.21"
 const OFFLINE = false;
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -40,42 +40,17 @@ const TOOLS = [
   { id: "intersect", icon: "fa-circle-nodes", label: "Intersect", desc: "Only songs in all selected" },
   { id: "dedupe",    icon: "fa-clone",        label: "Dedupe",    desc: "Copy without duplicates" },
   { id: "hierarchy", icon: "fa-sitemap", label: "Hierarchy", desc: "Auto-add to linked playlists" },
-  { id: "localplaylist", icon: "fa-folder-plus", label: "Local", desc: "Paste tracks and save locally on Wix" }
+  { id: "localplaylist", icon: "fa-folder-plus", label: "Local", desc: "Paste tracks and save locally on Wix" },
+  { id: "color", icon: "fa-palette", label: "Color", desc: "Customize theme hue and adaptive color" }
 ];
 
 const PLAYLISTS = {
-  "nu vygr":               { id: "ERROR", label: "nu vygr" },
-  instnrcrush:          { id: "ERROR", label: "instnrcrush" },
-  vygr:                 { id: "ERROR", label: "vygr" },
-  "vygr + instnrcrush": { id: "ERROR", label: "vygr + instnrcrush" },
-  bynd:                 { id: "ERROR", label: "bynd" },
-  gvlfbcktmsc:          { id: "ERROR", label: "gvlfbcktmsc" },
-  lsyrslftdnc:          { id: "ERROR", label: "lsyrslftdnc" },
-  "nu disc":            { id: "ERROR", label: "nu disc" },
-  electrnc:             { id: "ERROR", label: "electrnc" },
-  wave:                 { id: "ERROR", label: "wave" },
-  hideout:              { id: "ERROR", label: "hideout" },
-  tieduprightnow:       { id: "ERROR", label: "tieduprightnow" },
-  flashbacks:           { id: "ERROR", label: "flashbacks" }
 };
 
-const SOURCE_CANDIDATES = ["nu vygr", "vygr", "instnrcrush", "bynd", "gvlfbcktmsc", "lsyrslftdnc"];
-const TARGET_GRID = ["vygr", "instnrcrush", "bynd", "nu disc", "electrnc", "wave", "hideout", "tieduprightnow", "flashbacks"];
+const SOURCE_CANDIDATES = ["playlist"];
+const TARGET_GRID = ["playlist"];
 
 const RULES = {
-  "nu vygr":               [],
-  instnrcrush:          ["vygr + instnrcrush"],
-  vygr:                 ["vygr + instnrcrush"],
-  "vygr + instnrcrush": ["bynd"],
-  bynd:                 ["gvlfbcktmsc"],
-  gvlfbcktmsc:          ["lsyrslftdnc"],
-  lsyrslftdnc:          [],
-  "nu disc":            ["gvlfbcktmsc"],
-  electrnc:             ["gvlfbcktmsc"],
-  wave:                 ["gvlfbcktmsc"],
-  hideout:              [],
-  tieduprightnow:       [],
-  flashbacks:           []
 };
 
 const CACHE_KEY = "sp_cache_v3";
@@ -142,6 +117,283 @@ let previewHoldTimer = null;
 let previewLongPressed = false;
 let paintTargetBar = () => {};
 let paintApiCounter = () => {};
+
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+  else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+  else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+  else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+  else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+  else if (300 <= h && h < 360) { r = c; g = 0; b = x; }
+  return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;
+}
+
+function applyAdaptiveColor(track) {
+  if (localStorage.getItem("sp_adaptive_color") === "1" && track && track.image) {
+    extractHueFromImageUrl(track.image).then(res => applyHue(res.h, res.s));
+  }
+}
+
+function applyHue(h, s = 0.73) {
+  const root = document.documentElement;
+  const sat = Math.max(0, s);
+
+  if (sat === 0) {
+    root.style.setProperty("--accent", hslToRgb(0, 0, 0.75));
+    root.style.setProperty("--action", hslToRgb(0, 0, 0.65));
+    root.style.setProperty("--darkG", hslToRgb(0, 0, 0.18));
+    root.style.setProperty("--blackG", hslToRgb(0, 0, 0.08));
+    root.style.setProperty("--line", hslToRgb(0, 0, 0.22));
+    root.style.setProperty("--muted", hslToRgb(0, 0, 0.50));
+    return;
+  }
+
+  root.style.setProperty("--accent", hslToRgb(h, sat, 0.42));
+  root.style.setProperty("--action", hslToRgb(h, sat * 0.95, 0.34));
+  root.style.setProperty("--darkG", hslToRgb(h, sat * 0.85, 0.24));
+  root.style.setProperty("--blackG", hslToRgb(h, sat * 0.65, 0.10));
+  root.style.setProperty("--line", hslToRgb(h, sat * 0.4, 0.13));
+  root.style.setProperty("--muted", hslToRgb(h, sat * 0.55, 0.48));
+}
+
+async function extractHueFromImageUrl(url) {
+  return new Promise(resolve => {
+    if (!url) { resolve({ h: 141, s: 0.73 }); return; }
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 40;
+      canvas.height = 40;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, 40, 40);
+      try {
+        const data = ctx.getImageData(0, 0, 40, 40).data;
+        let colorBuckets = {};
+        let colorCount = 0;
+        let totalWeightedS = 0;
+        let totalWeight = 0;
+        let fallbackHue = 141;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i] / 255;
+          const g = data[i+1] / 255;
+          const b = data[i+2] / 255;
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          let h = 0, s = 0, l = (max + min) / 2;
+          if (max !== min) {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+            else if (max === g) h = (b - r) / d + 2;
+            else h = (r - g) / d + 4;
+            h /= 6;
+          }
+          h *= 360;
+          fallbackHue = h;
+          if (s > 0.02 && l > 0.08 && l < 0.92) {
+            const hueBin = Math.round(h / 15) * 15;
+            const weight = (s + 0.1) * (1 - Math.abs(l - 0.5));
+            colorBuckets[hueBin] = (colorBuckets[hueBin] || 0) + weight;
+            totalWeightedS += s * weight;
+            totalWeight += weight;
+            colorCount++;
+          }
+        }
+        let bestHue = fallbackHue;
+        let maxWeight = -1;
+        for (const [hueStr, weight] of Object.entries(colorBuckets)) {
+          if (weight > maxWeight) {
+            maxWeight = weight;
+            bestHue = Number(hueStr);
+          }
+        }
+        const avgS = totalWeight > 0 ? totalWeightedS / totalWeight : 0;
+        resolve({ h: isNaN(bestHue) ? 141 : bestHue, s: Math.max(0, avgS) });
+      } catch (e) {
+        resolve({ h: 141, s: 0.73 });
+      }
+    };
+    img.onerror = () => resolve({ h: 141, s: 0.73 });
+    img.src = url;
+  });
+}
+
+function openColorTool() {
+  const old = document.getElementById("tool-panel");
+  if (old) old.remove();
+
+  const prevHue = localStorage.getItem("sp_theme_hue") !== null ? Number(localStorage.getItem("sp_theme_hue")) : 141;
+  const prevSat = localStorage.getItem("sp_theme_sat") !== null ? Number(localStorage.getItem("sp_theme_sat")) : 0.73;
+  const prevAdaptive = localStorage.getItem("sp_adaptive_color") === "1";
+  let currentHue = prevHue;
+  let currentSat = prevSat;
+  let adaptiveActive = prevAdaptive;
+
+  const panel = document.createElement("div");
+  panel.id = "tool-panel";
+  panel.className = "tool-panel";
+
+  const head = document.createElement("div");
+  head.className = "tool-head";
+  const h3 = document.createElement("h3");
+  h3.textContent = "Color Theme";
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "tool-close";
+  close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  close.addEventListener("click", () => {
+    if (adaptiveActive) {
+      localStorage.setItem("sp_adaptive_color", "1");
+      if (currentTrack && currentTrack.image) {
+        extractHueFromImageUrl(currentTrack.image).then(res => applyHue(res.h, res.s));
+      }
+    } else {
+      localStorage.setItem("sp_adaptive_color", "0");
+      applyHue(prevHue, prevSat);
+    }
+    panel.remove();
+  });
+  head.append(h3, close);
+  panel.appendChild(head);
+
+  const hint = document.createElement("p");
+  hint.className = "tool-hint";
+  hint.textContent = "Adjust the theme hue and saturation live or enable adaptive color based on the current track cover.";
+  panel.appendChild(hint);
+
+  const adaptiveRow = document.createElement("div");
+  adaptiveRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);";
+  const adaptiveLabel = document.createElement("span");
+  adaptiveLabel.textContent = "Adaptive Color";
+  adaptiveLabel.style.cssText = "font-size:13px;font-weight:600;";
+  const adaptiveToggle = document.createElement("button");
+  adaptiveToggle.type = "button";
+  adaptiveToggle.className = "skip-toggle" + (adaptiveActive ? " on" : "");
+  adaptiveToggle.innerHTML = adaptiveActive ? '<i class="fa-solid fa-toggle-on"></i><span>ON</span>' : '<i class="fa-solid fa-toggle-off"></i><span>OFF</span>';
+  
+  adaptiveToggle.addEventListener("click", async () => {
+    adaptiveActive = !adaptiveActive;
+    adaptiveToggle.classList.toggle("on", adaptiveActive);
+    adaptiveToggle.innerHTML = adaptiveActive ? '<i class="fa-solid fa-toggle-on"></i><span>ON</span>' : '<i class="fa-solid fa-toggle-off"></i><span>OFF</span>';
+    slider.disabled = adaptiveActive;
+    satSlider.disabled = adaptiveActive;
+    if (adaptiveActive) {
+      let imgUrl = (currentTrack && currentTrack.image) || null;
+      if (!imgUrl) {
+        const recents = recentList();
+        if (recents.length && recents[0].image) imgUrl = recents[0].image;
+      }
+      const res = await extractHueFromImageUrl(imgUrl);
+      applyHue(res.h, res.s);
+    } else {
+      applyHue(currentHue, currentSat);
+    }
+  });
+  adaptiveRow.append(adaptiveLabel, adaptiveToggle);
+  panel.appendChild(adaptiveRow);
+
+  const sliderWrap = document.createElement("label");
+  sliderWrap.className = "tool-label";
+  sliderWrap.textContent = "Hue Slider";
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.min = "0";
+  slider.max = "360";
+  slider.value = String(currentHue);
+  slider.disabled = adaptiveActive;
+  slider.style.cssText = "width:100%;cursor:pointer;";
+
+  slider.addEventListener("input", () => {
+    if (adaptiveActive) return;
+    currentHue = Number(slider.value);
+    applyHue(currentHue, currentSat);
+  });
+  sliderWrap.appendChild(slider);
+  panel.appendChild(sliderWrap);
+
+  const satWrap = document.createElement("label");
+  satWrap.className = "tool-label";
+  satWrap.textContent = "Saturation Slider";
+  const satSlider = document.createElement("input");
+  satSlider.type = "range";
+  satSlider.min = "0";
+  satSlider.max = "1";
+  satSlider.step = "0.05";
+  satSlider.value = String(currentSat);
+  satSlider.disabled = adaptiveActive;
+  satSlider.style.cssText = "width:100%;cursor:pointer;";
+
+  satSlider.addEventListener("input", () => {
+    if (adaptiveActive) return;
+    currentSat = Number(satSlider.value);
+    applyHue(currentHue, currentSat);
+  });
+  satWrap.appendChild(satSlider);
+  panel.appendChild(satWrap);
+
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-top:8px;";
+
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.textContent = "Reset";
+  resetBtn.style.cssText = "background:var(--surface-2);color:var(--text);border:1px solid var(--line);padding:8px 14px;border-radius:var(--r-sm);cursor:pointer;";
+  resetBtn.addEventListener("click", () => {
+    currentHue = 141;
+    currentSat = 0.73;
+    slider.value = "141";
+    satSlider.value = "0.73";
+    adaptiveActive = false;
+    adaptiveToggle.classList.remove("on");
+    adaptiveToggle.innerHTML = '<i class="fa-solid fa-toggle-off"></i><span>OFF</span>';
+    slider.disabled = false;
+    satSlider.disabled = false;
+    applyHue(141, 0.73);
+  });
+
+  const rightActions = document.createElement("div");
+  rightActions.style.cssText = "display:flex;gap:8px;";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.style.cssText = "background:var(--surface-2);color:var(--text);border:1px solid var(--line);padding:8px 14px;border-radius:var(--r-sm);cursor:pointer;";
+  cancelBtn.addEventListener("click", () => {
+    if (prevAdaptive) {
+      localStorage.setItem("sp_adaptive_color", "1");
+      if (currentTrack && currentTrack.image) {
+        extractHueFromImageUrl(currentTrack.image).then(res => applyHue(res.h, res.s));
+      }
+    } else {
+      localStorage.setItem("sp_adaptive_color", "0");
+      applyHue(prevHue, prevSat);
+    }
+    panel.remove();
+  });
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.type = "button";
+  confirmBtn.textContent = "Confirm";
+  confirmBtn.style.cssText = "background:var(--accent);color:var(--bg);border:none;font-weight:700;padding:8px 14px;border-radius:var(--r-sm);cursor:pointer;";
+  confirmBtn.addEventListener("click", () => {
+    localStorage.setItem("sp_theme_hue", String(currentHue));
+    localStorage.setItem("sp_theme_sat", String(currentSat));
+    localStorage.setItem("sp_adaptive_color", adaptiveActive ? "1" : "0");
+    panel.remove();
+    setFeedback("Theme color saved", false);
+  });
+
+  rightActions.append(cancelBtn, confirmBtn);
+  actions.append(resetBtn, rightActions);
+  panel.appendChild(actions);
+
+  document.getElementById("tool-panel-host").appendChild(panel);
+}
 
 function showAppDialog({ type = "change", isQuestion = false, title = "", text = "", onConfirm = null, onCancel = null } = {}) {
   const existing = document.getElementById("app-custom-dialog");
@@ -691,13 +943,16 @@ async function loadAll(token) {
 }
 
 function resolveTargets(selected) {
-  const targets = new Set(["nu vygr"]);
+  const targets = new Set([selected]);
   const stack = [selected];
   while (stack.length) {
     const node = stack.pop();
-    if (targets.has(node)) continue;
-    targets.add(node);
-    for (const next of (RULES[node] || [])) stack.push(next);
+    for (const next of (RULES[node] || [])) {
+      if (!targets.has(next)) {
+        targets.add(next);
+        stack.push(next);
+      }
+    }
   }
   return [...targets];
 }
@@ -800,63 +1055,30 @@ async function fetchPlaybackState(token) {
 }
 
 async function playFromGesture(track, token, positionMs) {
+  if (OFFLINE) {
+    currentTrack = track;
+    updatePlayerBar(track);
+    pushRecent(track);
+    highlightTracks();
+    markGridHasTrack();
+    paintVersionsButton();
+    applyAdaptiveColor(track);
+    setFeedback("Playing locally (offline)", false);
+    return;
+  }
+
   if (player) await player.activateElement();
   pendingTrackUri = track.uri;
   pendingTrackUriAt = Date.now();
   try {
     await playTrack(track.uri, token, positionMs);
     pushRecent(track);
+    applyAdaptiveColor(track);
   } catch (err) {
     pendingTrackUri = null;
     pendingTrackUriAt = 0;
     throw err;
   }
-  setTimeout(async () => {
-    if (pendingTrackUri !== track.uri) return;
-    const api = await fetchPlaybackState(token);
-    if (!api) return;
-    pendingTrackUri = null;
-    pendingTrackUriAt = 0;
-    if (api.uri === track.uri) return;
-    const cachedHit = findCachedTrack(api.uri);
-    const apiRef = {
-      uri: api.uri,
-      name: api.name,
-      artists: api.artists,
-      durationMs: api.durationMs,
-      isrc: cachedHit && cachedHit.isrc ? cachedHit.isrc : null
-    };
-    if (currentTrack && sameRecording(currentTrack, apiRef)) {
-      sdkStaleUri = api.uri;
-    } else {
-      const src = sourceName();
-      const srcCache = cache[src];
-      const srcMatch = srcCache && srcCache.tracks && srcCache.tracks.find(t => sameRecording(t, apiRef) || t.uri === api.uri);
-      if (srcMatch) {
-        currentTrack = srcMatch;
-      } else if (!currentTrack) {
-        currentTrack = { ...apiRef, image: api.image };
-      } else {
-        sdkStaleUri = api.uri;
-      }
-    }
-    el.title.textContent = currentTrack.name;
-    el.artists.textContent = currentTrack.artists;
-    bindImg(el.art, currentTrack.image);
-    lastState = {
-      paused: api.paused,
-      position: api.position,
-      duration: api.durationMs,
-      timestamp: api.timestamp,
-      track_window: { current_track: { uri: api.uri } }
-    };
-    startProgress(lastState);
-    const toggleIcon = document.querySelector("#player-view .np-toggle i");
-    if (toggleIcon) toggleIcon.className = api.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
-    highlightTracks();
-    markGridHasTrack();
-    paintVersionsButton();
-  }, 800);
 }
 
 async function saveToLibrary(track, token, attempt = 1) {
@@ -1231,18 +1453,13 @@ function renderSourceGrid() {
     btn.type = "button";
     btn.dataset.name = name;
     btn.className = "source-tile" + (name === saved ? " active" : "");
+    btn.style.position = "relative";
+    
     const img = document.createElement("img");
     img.alt = "";
     bindImg(img, entry.image || (cache[name] && cache[name].image));
     const label = document.createElement("span");
     label.textContent = entry.label || name;
-    if (entry.local || (PLAYLISTS[name] && PLAYLISTS[name].local)) {
-      const badge = document.createElement("span");
-      badge.className = "local-badge";
-      badge.textContent = "local";
-      badge.style.cssText = "font-size:10px;background:var(--line);color:var(--muted);padding:1px 4px;border-radius:var(--r-sm);margin-left:6px;vertical-align:middle;";
-      label.appendChild(badge);
-    }
     
     btn.append(img, label);
 
@@ -1253,7 +1470,12 @@ function renderSourceGrid() {
       minus.textContent = "-";
       minus.title = "Delete local playlist";
       minus.style.cssText = "position:absolute;top:6px;left:6px;z-index:2;background:rgba(10,13,18,0.8);border:none;width:22px;height:22px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:bold;cursor:pointer;";
-      btn.style.position = "relative";
+      
+      const badge = document.createElement("span");
+      badge.className = "local-badge";
+      badge.textContent = "local";
+      badge.style.cssText = "position:absolute;bottom:26px;left:6px;z-index:2;font-size:9px;background:rgba(10,13,18,0.85);color:var(--muted);padding:1px 5px;border-radius:4px;letter-spacing:0.04em;";
+      
       minus.addEventListener("click", async ev => {
         ev.stopPropagation();
         showAppDialog({
@@ -1287,7 +1509,7 @@ function renderSourceGrid() {
           }
         });
       });
-      btn.appendChild(minus);
+      btn.append(minus, badge);
     }
 
     btn.title = "Click to load · double-click to play";
@@ -2237,7 +2459,7 @@ function handleEnd() {
   }
 }
 
-function onPlayerState(state) {
+async function onPlayerState(state) {
   const prev = lastState;
   lastState = state;
   if (!state) return;
@@ -2304,6 +2526,7 @@ function onPlayerState(state) {
     el.title.textContent = currentTrack.name;
     el.artists.textContent = currentTrack.artists;
     bindImg(el.art, currentTrack.image);
+    applyAdaptiveColor(currentTrack);
     if (pendingSeek && currentTrack) {
       const part = pendingSeek;
       pendingSeek = null;
@@ -2448,40 +2671,90 @@ function paintRecentGrid() {
   const target = recentPanel || (npPanel && npView === "recent" ? npPanel : null);
   if (!target) return;
   target.innerHTML = "";
-  const list = recentList();
-  if (!list.length) {
+  
+  const header = document.createElement("div");
+  header.className = "np-grid-header";
+  const qBtn = document.createElement("button");
+  qBtn.type = "button";
+  qBtn.textContent = "Queue";
+  qBtn.addEventListener("click", () => { npView = "queue"; paintNpGrid(); });
+  const rBtn = document.createElement("button");
+  rBtn.type = "button";
+  rBtn.textContent = "Recent";
+  rBtn.classList.add("active");
+  rBtn.addEventListener("click", () => { npView = "recent"; paintRecentGrid(); });
+  header.append(qBtn, rBtn);
+  target.appendChild(header);
+
+  const list = document.createElement("div");
+  list.className = "np-grid-list";
+  target.appendChild(list);
+
+  const curUri = currentPlayingUri();
+  const rawItems = recentList();
+  const items = rawItems.filter(t => {
+    if (!t) return false;
+    if (curUri && t.uri === curUri) return false;
+    if (currentTrack && sameRecording(t, currentTrack)) return false;
+    return true;
+  });
+
+  if (!items.length) {
     const empty = document.createElement("p");
     empty.className = "recent-empty";
     empty.textContent = "No recent songs";
-    target.appendChild(empty);
+    list.appendChild(empty);
     return;
   }
-  for (const t of list) {
+  
+  for (let i = 0; i < items.length; i++) {
+    const t = items[i];
     const card = document.createElement("div");
+    card.dataset.uri = t.uri;
     card.className = "track";
+    
     const img = document.createElement("img");
     img.alt = "";
     bindImg(img, t.image);
+    
     const meta = document.createElement("div");
     meta.innerHTML = `<p class="track-name"></p><p class="track-artists"></p>`;
     meta.querySelector(".track-name").textContent = t.name;
     meta.querySelector(".track-artists").textContent = t.artists;
-    card.append(img, meta);
+
+    if (i === 0 && npView === "recent") {
+      const badge = document.createElement("span");
+      badge.className = "np-next-badge";
+      badge.textContent = "previous";
+      card.appendChild(badge);
+    }
+
+    const actionBtn = document.createElement("span");
+    actionBtn.className = "np-tile-btn";
+    actionBtn.setAttribute("role", "button");
+    actionBtn.textContent = "+";
+    actionBtn.title = "Add to queue";
+    actionBtn.addEventListener("click", ev => {
+      ev.stopPropagation();
+      enqueueNext(t);
+    });
+
+    card.append(img, meta, actionBtn);
     card.addEventListener("click", async () => {
       try {
-        changedPlayingNow();
-        const token = await getToken();
+        const token = !OFFLINE ? await getToken() : "";
         currentTrack = t;
         await playFromGesture(t, token);
         updatePlayerBar(t);
         highlightTracks();
         markGridHasTrack();
         paintVersionsButton();
+        paintRecentGrid();
       } catch (err) {
         setFeedback(err.message, true);
       }
     });
-    target.appendChild(card);
+    list.appendChild(card);
   }
 }
 
@@ -2648,6 +2921,9 @@ async function startSession(token) {
   renderTracks();
   paintVersionsButton();
   
+  const sourcesLabel = document.getElementById("sources-label");
+  if (sourcesLabel) sourcesLabel.textContent = sourceName();
+
   const container = document.getElementById("source-container");
   if (container) container.style.display = "block";
 
@@ -3570,7 +3846,21 @@ function buildPlayer() {
   toggle.type = "button";
   toggle.className = "np-toggle";
   toggle.innerHTML = '<i class="fa-solid fa-play"></i>';
-  toggle.addEventListener("click", async () => {
+toggle.addEventListener("click", async () => {
+    if (OFFLINE) {
+      if (!currentTrack) {
+        const tracks = (cache[sourceName()] && cache[sourceName()].tracks) || [];
+        if (tracks.length) {
+          currentTrack = tracks[0];
+          updatePlayerBar(currentTrack);
+        }
+      }
+      const toggleIcon = document.querySelector("#player-view .np-toggle i");
+      const isPaused = toggleIcon.classList.contains("fa-play");
+      toggleIcon.className = isPaused ? "fa-solid fa-pause" : "fa-solid fa-play";
+      setFeedback(isPaused ? "Playing locally" : "Paused locally", false);
+      return;
+    }
     if (!player) return;
     try {
       await player.activateElement();
@@ -4180,6 +4470,13 @@ async function renderToolsGrid() {
         } catch (err) {
           setFeedback(err.message, true);
         }
+      });
+      grid.appendChild(btn);
+      continue;
+    }
+    if (t.id === "color") {
+      btn.addEventListener("click", () => {
+        openColorTool();
       });
       grid.appendChild(btn);
       continue;
@@ -4927,41 +5224,19 @@ function buildApiCounter() {
 
 async function startOfflineSession() {
   showApp();
-  setStatus("OFFLINE — UI preview");
-  const demo = [
-    { name: "nu vygr", tracks: 8 },
-    { name: "bynd", tracks: 6 },
-    { name: "hideout", tracks: 4 },
-    { name: "flashbacks", tracks: 5 }
-  ];
-  for (const key of Object.keys(PLAYLISTS)) delete PLAYLISTS[key];
-  SOURCE_CANDIDATES.length = 0;
-  const artists = ["Demo Artist", "Test Band", "Sample Name"];
-  for (const d of demo) {
-    PLAYLISTS[d.name] = { id: "offline_" + d.name, label: d.name, image: null };
-    SOURCE_CANDIDATES.push(d.name);
-    const tracks = [];
-    for (let i = 0; i < d.tracks; i++) {
-      tracks.push({
-        uri: "spotify:track:offline" + d.name + i,
-        name: d.name + " track " + (i + 1),
-        artists: artists[i % artists.length],
-        durationMs: 180000 + i * 7000,
-        image: null,
-        isrc: null
-      });
+  setStatus("OFFLINE - Local mode");
+  readCache();
+  const cachedNames = Object.keys(cache);
+  if (cachedNames.length > 0) {
+    for (const name of cachedNames) {
+      if (!PLAYLISTS[name]) {
+        PLAYLISTS[name] = { id: cache[name].id || ("offline_" + name), label: cache[name].label || name, image: cache[name].image || null, local: cache[name].local || true };
+      }
+      if (!SOURCE_CANDIDATES.includes(name)) {
+        SOURCE_CANDIDATES.push(name);
+      }
     }
-    cache[d.name] = {
-      id: "offline_" + d.name,
-      label: d.name,
-      image: null,
-      loadedAt: Date.now(),
-      total: d.tracks,
-      snapshot_id: null,
-      tracks
-    };
   }
-
   try {
     const res = await fetch(LOCAL_PLAYLISTS_URL);
     if (res.ok) {
@@ -4981,20 +5256,27 @@ async function startOfflineSession() {
             local: true
           };
         }
+        writeCache();
       }
     }
   } catch (_) {}
-
-  localStorage.setItem(SOURCE_KEY, "nu vygr");
-  if (!currentTrack) {
-    currentTrack = cache["nu vygr"].tracks[0];
+  if (!SOURCE_CANDIDATES.length) {
+    SOURCE_CANDIDATES.push("playlist");
+  }
+  const defaultSource = SOURCE_CANDIDATES.includes(sourceName()) ? sourceName() : SOURCE_CANDIDATES[0];
+  localStorage.setItem(SOURCE_KEY, defaultSource);
+  if (!currentTrack && cache[defaultSource] && cache[defaultSource].tracks && cache[defaultSource].tracks.length) {
+    currentTrack = cache[defaultSource].tracks[0];
     updatePlayerBar(currentTrack);
+    applyAdaptiveColor(currentTrack);
   }
   renderGrid();
   renderSourceGrid();
   renderTracks();
   highlightTracks();
   paintVersionsButton();
+  const sourcesLabel = document.getElementById("sources-label");
+  if (sourcesLabel) sourcesLabel.textContent = sourceName();
 }
 
 async function boot() {
@@ -5354,6 +5636,15 @@ const skipToggle = document.createElement("button");
   });
   try {
     readCache();
+    
+    const savedHue = localStorage.getItem("sp_theme_hue");
+    const adaptiveOn = localStorage.getItem("sp_adaptive_color") === "1";
+    if (adaptiveOn && currentTrack && currentTrack.image) {
+      applyAdaptiveColor(currentTrack);
+    } else if (savedHue !== null) {
+      applyHue(Number(savedHue));
+    }
+
     if (OFFLINE) {
       startOfflineSession();
       const container = document.getElementById("source-container");
