@@ -1,5 +1,5 @@
-const VERSION_NUMBER = "v1.21"
-const OFFLINE = false;
+const VERSION_NUMBER = "v1.21b"
+let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
 const SYNC_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/hidden";
@@ -41,7 +41,8 @@ const TOOLS = [
   { id: "dedupe",    icon: "fa-clone",        label: "Dedupe",    desc: "Copy without duplicates" },
   { id: "hierarchy", icon: "fa-sitemap", label: "Hierarchy", desc: "Auto-add to linked playlists" },
   { id: "localplaylist", icon: "fa-folder-plus", label: "Local", desc: "Paste tracks and save locally on Wix" },
-  { id: "color", icon: "fa-palette", label: "Color", desc: "Customize theme hue and adaptive color" }
+  { id: "color", icon: "fa-palette", label: "Color", desc: "Customize theme hue and adaptive color" },
+  { id: "offline", icon: "fa-ban", label: "Offline Mode", desc: "Toggle offline mode" }
 ];
 
 const PLAYLISTS = {
@@ -256,7 +257,7 @@ function openColorTool() {
       localStorage.setItem("sp_adaptive_color", "0");
       applyHue(prevHue, prevSat);
     }
-    panel.remove();
+    closeToolPanel();
   });
   head.append(h3, close);
   panel.appendChild(head);
@@ -373,7 +374,7 @@ function openColorTool() {
       localStorage.setItem("sp_adaptive_color", "0");
       applyHue(prevHue, prevSat);
     }
-    panel.remove();
+    closeToolPanel();
   });
 
   const confirmBtn = document.createElement("button");
@@ -802,12 +803,135 @@ async function ensureIdentity(token) {
   return me;
 }
 
-async function ensurePlaylists(token) {
-  const cached = readPlaylistsCache();
-  if (cached) return cached;
+const PLAYLIST_INDEX_CACHE_KEY = "sp_playlist_index_v1";
+const PLAYLIST_INDEX_TTL = 24 * 60 * 60 * 1000;
+
+async function ensurePlaylists(token, forceRefresh = false) {
+  if (!forceRefresh) {
+    const raw = localStorage.getItem(PLAYLIST_INDEX_CACHE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && Date.now() < parsed.expiresAt && Array.isArray(parsed.items)) {
+          return parsed.items;
+        }
+      } catch (_) {}
+    }
+  }
   const found = await discoverPlaylists(token);
-  writePlaylistsCache(found);
+  localStorage.setItem(PLAYLIST_INDEX_CACHE_KEY, JSON.stringify({
+    items: found,
+    expiresAt: Date.now() + PLAYLIST_INDEX_TTL
+  }));
   return found;
+}
+
+async function syncAllPlaylistsFromWix(token) {
+  const res = await fetch(PLAYLIST_DATA_INDEX_URL + "?accessToken=" + encodeURIComponent(token));
+  if (!res.ok) return 0;
+  const json = await res.json();
+  if (json.error) return 0;
+  const items = json.items || [];
+  if (!items.length) return 0;
+  
+  window.wixSnapshotMap = window.wixSnapshotMap || {};
+  for (const item of items) {
+    if (item.playlistId && item.snapshotId) {
+      window.wixSnapshotMap[item.playlistId] = item.snapshotId;
+    }
+  }
+
+  const byId = {};
+  for (const [name, entry] of Object.entries(PLAYLISTS)) byId[entry.id] = name;
+  let applied = 0;
+  for (const item of items) {
+    const name = byId[item.playlistId];
+    if (!name) continue;
+    const local = cache[name];
+    const localAt = local && !local.partial ? Number(local.loadedAt) || 0 : 0;
+    const wixAt = Number(item.loadedAt) || 0;
+    if (wixAt <= localAt) continue;
+    if (await applyPlaylistFromWix(name, token)) applied++;
+  }
+  return applied;
+}
+
+async function resolvePlaylistData(name, token) {
+  const entry = PLAYLISTS[name];
+  if (!entry || !entry.id) return "none";
+  const local = cache[name];
+  const localComplete = Boolean(local && local.tracks && local.tracks.length && !local.partial);
+  if (local && local.id && hasPending(local.id)) return "local";
+
+  let liveMeta = null;
+  try {
+    const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${entry.id}?fields=snapshot_id`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (metaRes.ok) liveMeta = await metaRes.json();
+  } catch (_) {}
+
+  const liveSnapshot = liveMeta ? liveMeta.snapshot_id : null;
+  const wixKnownSnapshot = window.wixSnapshotMap && window.wixSnapshotMap[entry.id];
+
+  if (localComplete && liveSnapshot && local.snapshot_id === liveSnapshot) {
+    return "local";
+  }
+
+  let wix = null;
+  let wixAt = 0;
+  try {
+    const res = await fetch(
+      PLAYLIST_DATA_URL
+        + "?accessToken=" + encodeURIComponent(token)
+        + "&playlistId=" + encodeURIComponent(entry.id)
+    );
+    if (res.ok) {
+      const json = await res.json();
+      if (!json.error && json.data) {
+        const parsed = JSON.parse(json.data);
+        if (parsed && Array.isArray(parsed.tracks) && parsed.tracks.length) {
+          wix = parsed;
+          wixAt = Number(parsed.loadedAt) || 0;
+        }
+      }
+    }
+  } catch (_) {}
+
+  if (wix && liveSnapshot && wix.snapshot_id === liveSnapshot) {
+    cache[name] = {
+      id: entry.id,
+      label: wix.label || entry.label,
+      image: wix.image || null,
+      loadedAt: wixAt,
+      total: wix.total || wix.tracks.length,
+      tracks: wix.tracks,
+      snapshot_id: wix.snapshot_id || null,
+    };
+    writeCache();
+    return "wix";
+  }
+
+  if (localComplete && Number(local.loadedAt || 0) >= wixAt) {
+    return "local";
+  }
+
+  if (wix) {
+    cache[name] = {
+      id: entry.id,
+      label: wix.label || entry.label,
+      image: wix.image || null,
+      loadedAt: wixAt,
+      total: wix.total || wix.tracks.length,
+      tracks: wix.tracks,
+      snapshot_id: wix.snapshot_id || null,
+    };
+    writeCache();
+    return "wix";
+  }
+
+  return "none";
 }
 
 async function validateToken(token) {
@@ -1745,13 +1869,26 @@ async function resolvePlaylistData(name, token) {
   return "none";
 }
 
+function closeToolPanel() {
+  const old = document.getElementById("tool-panel");
+  if (old) old.remove();
+  toolsCollapsed = true;
+  localStorage.setItem("sp_tools_collapsed", "1");
+  renderToolsGrid();
+  const toolsBtn = document.querySelector('[data-tool="tools"]');
+  if (toolsBtn) toolsBtn.classList.remove("active");
+}
+
 async function selectSource(name, play) {
   if (play) changedPlayingNow();
   localStorage.setItem(SOURCE_KEY, name);
+  
+  sourcesCollapsed = true;
+  localStorage.setItem("sp_sources_collapsed", "1");
   const sourcesLabel = document.getElementById("sources-label");
   if (sourcesLabel) sourcesLabel.textContent = sourceName();
   const grid = document.getElementById("source-grid");
-  if (grid) grid.style.display = sourcesCollapsed ? "none" : "grid";
+  if (grid) grid.style.display = "none";
   const pickFirst = () => {
     const tracks = (cache[name] && cache[name].tracks) || [];
     return tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
@@ -2082,6 +2219,21 @@ function renderGrid() {
     bindImg(img, entry.image || (cache[name] && cache[name].image));
     const label = document.createElement("span");
     label.textContent = entry.label;
+
+    btn.append(img, label);
+
+    const cachedEntry = cache[name];
+    const isWixSynced = cachedEntry && cachedEntry.tracks && cachedEntry.tracks.length > 0 && !cachedEntry.partial;
+
+    if (isWixSynced && !entry.local) {
+      const syncedBadge = document.createElement("span");
+      syncedBadge.className = "local-badge";
+      syncedBadge.textContent = "synced";
+      syncedBadge.style.cssText = "position:absolute;bottom:26px;left:6px;z-index:2;font-size:9px;background:rgba(10,13,18,0.85);color:var(--muted);padding:1px 5px;border-radius:4px;letter-spacing:0.04em;";
+      btn.style.position = "relative";
+      btn.appendChild(syncedBadge);
+    }
+
     if (reorderMode) {
       const badge = document.createElement("span");
       badge.className = "grid-minus";
@@ -2153,7 +2305,7 @@ function renderGrid() {
           }
         });
       });
-      btn.append(img, label, badge, sync);
+      btn.append(badge, sync);
       btn.classList.add("reordering");
 
       btn.addEventListener("pointerdown", ev => {
@@ -2192,7 +2344,6 @@ function renderGrid() {
             order.splice(fromIdx, 1);
             order.splice(toIdx, 0, name);
             
-            // Re-order DOM elements smoothly based on new array order
             const map = new Map(buttons.map(b => [b.dataset.name, b]));
             order.forEach(n => {
               const node = map.get(n);
@@ -2221,8 +2372,6 @@ function renderGrid() {
         document.addEventListener("pointerup", onUp);
         document.addEventListener("pointercancel", onUp);
       });
-    } else {
-      btn.append(img, label);
     }
     const has = cur && cache[name] && cache[name].tracks && cache[name].tracks.some(t => sameRecording(t, currentTrack));
     if (has) btn.classList.add("has-track");
@@ -4337,10 +4486,17 @@ function buildHeader() {
   const logo = document.createElement("span");
   logo.className = "header-logo";
   logo.innerHTML = LOGO_SVG;
+
+  const offlineBadge = document.createElement("span");
+  offlineBadge.id = "offline-mode-badge";
+  offlineBadge.className = "offline-badge";
+  offlineBadge.textContent = "OFFLINE MODE";
+  offlineBadge.style.cssText = "display: " + (OFFLINE ? "inline-block" : "none") + "; background: var(--bg); color: var(--white); font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 8px; letter-spacing: 0.05em; vertical-align: middle;";
+
   const wrap = document.createElement("div");
   wrap.className = "header-text";
 
-  header.append(logo, wrap);
+  header.append(logo, offlineBadge, wrap);
 
   const versionSpan = document.createElement("span");
   versionSpan.className = "header-version";
@@ -4481,6 +4637,24 @@ async function renderToolsGrid() {
       grid.appendChild(btn);
       continue;
     }
+if (t.id === "offline") {
+      const paintOfflineTile = () => {
+        btn.classList.toggle("active", OFFLINE);
+        btn.style.background = OFFLINE ? "var(--accent)" : "";
+        btn.style.color = OFFLINE ? "var(--bg)" : "";
+        const icon = btn.querySelector("i");
+        if (icon) icon.style.color = OFFLINE ? "var(--bg)" : "";
+      };
+      paintOfflineTile();
+      btn.title = OFFLINE ? "Offline mode: ON (click to go online)" : "Offline mode: OFF (click to go offline)";
+      btn.addEventListener("click", () => {
+        const nextState = !OFFLINE;
+        localStorage.setItem("sp_offline", nextState ? "1" : "0");
+        location.reload();
+      });
+      grid.appendChild(btn);
+      continue;
+    }
     
     btn.addEventListener("click", async () => {
       try {
@@ -4555,7 +4729,7 @@ function openHierarchyPanel() {
   close.type = "button";
   close.className = "tool-close";
   close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-  close.addEventListener("click", () => panel.remove());
+  close.addEventListener("click", () => closeToolPanel());
   head.append(h3, close);
   panel.appendChild(head);
 
@@ -4666,7 +4840,7 @@ async function openLocalPlaylistTool(token) {
     close.type = "button";
     close.className = "tool-close outline-btn";
     close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-    close.addEventListener("click", () => panel.remove());
+    close.addEventListener("click", () => closeToolPanel());
     head.append(h3, close);
 
     const hint = document.createElement("p");
@@ -4694,7 +4868,7 @@ async function openLocalPlaylistTool(token) {
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => panel.remove());
+    cancel.addEventListener("click", () => closeToolPanel());
     const create = document.createElement("button");
     create.type = "button";
     create.className = "tool-create";
@@ -4714,34 +4888,57 @@ async function openLocalPlaylistTool(token) {
             const playlistName = "local: " + (nameInput.value.trim() || "Playlist");
             const playlistId = "local_" + Date.now();
             const tracks = [];
-            for (const id of ids) {
-                let track = lookupTrack("spotify:track:" + id);
-                if (!track) {
-                    const res = await fetch(`https://api.spotify.com/v1/tracks/${id}`, {
-                        headers: { Authorization: "Bearer " + token }
-                    });
-                    if (res.ok) {
-                        const t = await res.json();
-                        track = {
-                            uri: t.uri,
-                            name: t.name,
-                            artists: (t.artists || []).map(a => a.name).join(", "),
-                            durationMs: t.duration_ms,
-                            image: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : null,
-                            isrc: t.external_ids && t.external_ids.isrc ? t.external_ids.isrc : null
-                        };
+
+            for (let i = 0; i < ids.length; i += 50) {
+                const chunk = ids.slice(i, i + 50);
+                const missingIds = [];
+                const chunkTracks = [];
+
+                for (const id of chunk) {
+                    let track = lookupTrack("spotify:track:" + id);
+                    if (track) {
+                        chunkTracks.push(track);
                     } else {
-                        track = {
+                        missingIds.push(id);
+                    }
+                }
+
+                if (missingIds.length > 0) {
+                    try {
+                        const res = await fetch(`https://api.spotify.com/v1/tracks?ids=${missingIds.join(",")}`, {
+                            headers: { Authorization: "Bearer " + token }
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            for (const t of (data.tracks || [])) {
+                                if (!t) continue;
+                                const formatted = {
+                                    uri: t.uri,
+                                    name: t.name,
+                                    artists: (t.artists || []).map(a => a.name).join(", "),
+                                    durationMs: t.duration_ms,
+                                    image: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : null,
+                                    isrc: t.external_ids && t.external_ids.isrc ? t.external_ids.isrc : null
+                                };
+                                chunkTracks.push(formatted);
+                            }
+                        }
+                    } catch (_) {}
+                }
+
+                for (const id of chunk) {
+                    if (!chunkTracks.some(t => t.uri.includes(id))) {
+                        chunkTracks.push({
                             uri: "spotify:track:" + id,
                             name: "Track " + id,
                             artists: "Unknown",
                             durationMs: 0,
                             image: null,
                             isrc: null
-                        };
+                        });
                     }
                 }
-                tracks.push(track);
+                tracks.push(...chunkTracks);
             }
 
             PLAYLISTS[playlistName] = { id: playlistId, label: playlistName, image: tracks[0] ? tracks[0].image : null, local: true };
@@ -4772,7 +4969,7 @@ async function openLocalPlaylistTool(token) {
             localStorage.setItem(SOURCE_KEY, playlistName);
             renderSourceGrid();
             renderTracks();
-            panel.remove();
+            closeToolPanel();
             setFeedback("created local playlist " + playlistName, false);
         } catch (err) {
             create.disabled = false;
@@ -4807,7 +5004,7 @@ async function openTool(toolId, token) {
   close.type = "button";
   close.className = "tool-close";
   close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-  close.addEventListener("click", () => panel.remove());
+  close.addEventListener("click", () => closeToolPanel());
   head.append(h3, close);
 
   const hint = document.createElement("p");
@@ -4870,7 +5067,7 @@ async function openTool(toolId, token) {
   const cancel = document.createElement("button");
   cancel.type = "button";
   cancel.textContent = "Cancel";
-  cancel.addEventListener("click", () => panel.remove());
+  cancel.addEventListener("click", () => closeToolPanel());
   const create = document.createElement("button");
   create.type = "button";
   create.className = "tool-create";
@@ -4976,11 +5173,11 @@ async function openTool(toolId, token) {
         partial: false
       };
       writeCache();
-      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
+      try { await syncPlaylistToWix(name, token); } catch (_) {}
       clearPlaylistsCache();
       renderSourceGrid();
       renderGrid();
-      panel.remove();
+      closeToolPanel();
       setFeedback("created " + name + " · " + built.length + " songs", false);
       setStatus("");
     } catch (err) {
@@ -5327,7 +5524,6 @@ const skipToggle = document.createElement("button");
     if (window.paintPlayerFilter) window.paintPlayerFilter();
   };
   
-  // Initial paint for player button
   window.paintPlayerFilter();
 
   const playerZoom = document.createElement("div");
