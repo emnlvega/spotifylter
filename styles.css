@@ -186,7 +186,7 @@ html {
         radial-gradient(circle at var(--x-7) var(--y-7), var(--darkG) var(--s-start-7), transparent var(--s-end-7)), 
         radial-gradient(circle at var(--x-8) var(--y-8), var(--darkG) var(--s-start-8), transparent var(--s-end-8)), 
         radial-gradient(circle at var(--x-9) var(--y-9), var(--blackG) var(--s-start-9), transparent var(--s-end-9));
-    animation: ani-your_css_selector_here 20s linear infinite alternate;
+    animation: ani-your_css_selector_here 15s linear infinite alternate;
     background-blend-mode: normal;
     background-attachment: fixed;
     contain: none;
@@ -863,7 +863,6 @@ input[type="range"]::-moz-range-thumb {
   min-width: 56px;
   height: 30px;
   padding: 0;
-  background: var(--scndry4);
   color: transparent;
   border: none;
   border-right: 1px solid var(--scndry3);
@@ -1993,7 +1992,7 @@ body.auth-mode #auth-box {
   min-width: 40px;
   height: 30px;
   padding: 0;
-  background: var(--scndry2);
+  background: var(--action);
   color: transparent;
   box-shadow: none;
   font-size: 0;

@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.23"
+const VERSION_NUMBER = "v1.23b"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -159,6 +159,7 @@ function createSongsPanelDock() {
       : panel.getBoundingClientRect();
 
     if (!pinned && (rect.bottom < 0 || rect.top > window.innerHeight)) {
+      if (npPanel) toggleNpPanel();
       lastHeight = panel.offsetHeight || lastHeight;
       dock.style.width = rect.width + "px";
       dock.style.height = lastHeight + "px";
@@ -3653,7 +3654,7 @@ function paintPresetsFromPosition(ms, durationMs) {
   if (active === lastPaintedPreset) return;
   lastPaintedPreset = active;
   document.querySelectorAll("#player-view .np-preset").forEach(b => {
-    b.classList.toggle("active", b.title === active);
+    b.classList.toggle("active", b.dataset.preset === active);
   });
 }
 
@@ -4462,17 +4463,25 @@ const filterBtn = document.createElement("button");
     }
   };
   for (const [part] of presets) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "np-preset";
-    b.textContent = "";
-    b.addEventListener("click", () => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "np-preset";
+      b.dataset.preset = part;
+      b.textContent = "";
+      presetBtns[part] = b;
+      b.addEventListener("click", () => {
+      if (OFFLINE) {
+        presetTracking = false;
+        lastPaintedPreset = null;
+        paintPresets(part);
+        return;
+      }
       presetTracking = true;
       lastPaintedPreset = null;
       seekCurrent(part);
     });
-    presetPill.appendChild(b);
-  }
+      presetPill.appendChild(b);
+    }
   paintPresets(null);
 
   const fwd10 = document.createElement("button");
