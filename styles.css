@@ -180,10 +180,10 @@ html {
         radial-gradient(circle at var(--x-1) var(--y-1), var(--bg) var(--s-start-1), transparent var(--s-end-1)), 
         radial-gradient(circle at var(--x-2) var(--y-2), var(--darkG) var(--s-start-2), transparent var(--s-end-2)), 
         radial-gradient(circle at var(--x-3) var(--y-3), var(--darkG) var(--s-start-3), transparent var(--s-end-3)), 
-        radial-gradient(circle at var(--x-4) var(--y-4), var(--blackG) var(--s-start-4), transparent var(--s-end-4)), 
+        radial-gradient(circle at var(--x-4) var(--y-4), var(--scndry4) var(--s-start-4), transparent var(--s-end-4)), 
         radial-gradient(circle at var(--x-5) var(--y-5), var(--darkG) var(--s-start-5), transparent var(--s-end-5)), 
-        radial-gradient(circle at var(--x-6) var(--y-6), var(--darkG) var(--s-start-6), transparent var(--s-end-6)), 
-        radial-gradient(circle at var(--x-7) var(--y-7), var(--darkG) var(--s-start-7), transparent var(--s-end-7)), 
+        radial-gradient(circle at var(--x-6) var(--y-6), var(--scndry4) var(--s-start-6), transparent var(--s-end-6)), 
+        radial-gradient(circle at var(--x-7) var(--y-7), var(--scndry3) var(--s-start-7), transparent var(--s-end-7)), 
         radial-gradient(circle at var(--x-8) var(--y-8), var(--darkG) var(--s-start-8), transparent var(--s-end-8)), 
         radial-gradient(circle at var(--x-9) var(--y-9), var(--blackG) var(--s-start-9), transparent var(--s-end-9));
     animation: ani-your_css_selector_here 15s linear infinite alternate;

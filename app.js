@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.23b"
+const VERSION_NUMBER = "v1.23c"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
