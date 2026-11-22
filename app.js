@@ -1221,6 +1221,10 @@ function initPlayer(onState) {
       });
       player.addListener("playback_error", ({ message }) => {
         if (message && message.includes("M_ID")) return;
+        if (previewMode && message && message.includes("The operation is not allowed")) {
+          setFeedback("player " + message + " (retrying preview)", true);
+          return;
+        }
         setFeedback("player " + message, true);
       });
       player.addListener("ready", ({ device_id }) => {
@@ -3810,17 +3814,24 @@ async function runPreviewForCurrent() {
   presetTracking = true;
   lastPaintedPreset = null;
   const startedUri = currentTrack.uri;
-  const durationMs = currentTrack.durationMs;
+  const durationMs = currentTrack.durationMs || 0;
   const parts = previewPresets.split("").filter(p => "ABCDE".includes(p));
   if (!parts.length) parts.push("A", "B", "C", "D", "E");
 
   try {
     for (const part of parts) {
       if (previewAbort || !previewMode || !currentTrack || currentTrack.uri !== startedUri) break;
-      const seekTo = previewPosition(durationMs, part);
-      const cur = await player.getCurrentState();
-      if (!(cur && Math.abs(cur.position - seekTo) < 1000)) {
-        await seekPreview(durationMs, part);
+      const rawSeek = previewPosition(durationMs, part);
+      const seekTo = durationMs > 2000 ? Math.min(rawSeek, durationMs - 2000) : 0;
+      if (durationMs > 2000) {
+        try {
+          const cur = await player.getCurrentState();
+          if (!(cur && Math.abs(cur.position - seekTo) < 1000)) {
+            await player.seek(seekTo);
+          }
+        } catch (_) {
+          continue;
+        }
       }
       await new Promise(r => setTimeout(r, 300));
       const ok = await previewWaitUntil(seekTo + previewSeconds * 1000, durationMs);
