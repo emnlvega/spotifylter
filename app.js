@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.22"
+const VERSION_NUMBER = "v1.23"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -137,9 +137,78 @@ function hslToRgb(h, s, l) {
   return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;
 }
 
+function createSongsPanelDock() {
+  const panel = document.querySelector(".songs-panel");
+  if (!panel || document.getElementById("songs-panel-dock")) return;
+
+  const anchor = document.createElement("div");
+  anchor.id = "songs-panel-anchor";
+  panel.parentElement.insertBefore(anchor, panel);
+
+  const dock = document.createElement("div");
+  dock.id = "songs-panel-dock";
+  dock.style.display = "none";
+  anchor.parentElement.insertBefore(dock, anchor.nextSibling);
+
+  let pinned = false;
+  let lastHeight = 0;
+
+  const updateDockState = () => {
+    const rect = pinned
+      ? dock.getBoundingClientRect()
+      : panel.getBoundingClientRect();
+
+    if (!pinned && (rect.bottom < 0 || rect.top > window.innerHeight)) {
+      lastHeight = panel.offsetHeight || lastHeight;
+      dock.style.width = rect.width + "px";
+      dock.style.height = lastHeight + "px";
+      dock.style.display = "block";
+      panel.classList.add("pinned");
+      pinned = true;
+    } else if (pinned && rect.top <= window.innerHeight && rect.bottom >= 0) {
+      panel.classList.remove("pinned");
+      dock.style.display = "none";
+      pinned = false;
+    }
+  };
+
+  window.addEventListener("scroll", updateDockState, { passive: true });
+  window.addEventListener("resize", updateDockState, { passive: true });
+}
+
+function secondaryColorEnabled() {
+  return localStorage.getItem("sp_secondary_color") === "1";
+}
+
+function circularHueDistance(a, b) {
+  const diff = Math.abs(((a - b) % 360) + 360) % 360;
+  return diff > 180 ? 360 - diff : diff;
+}
+
+function applySecondaryHue(h, s = 0.73) {
+  const root = document.documentElement;
+  const sat = Math.max(0, s);
+
+  if (sat === 0) {
+    root.style.setProperty("--scndry1", hslToRgb(0, 0, 0.70));
+    root.style.setProperty("--scndry2", hslToRgb(0, 0, 0.50));
+    root.style.setProperty("--scndry3", hslToRgb(0, 0, 0.30));
+    root.style.setProperty("--scndry4", hslToRgb(0, 0, 0.14));
+    return;
+  }
+
+  root.style.setProperty("--scndry1", hslToRgb(h, sat, 0.52));
+  root.style.setProperty("--scndry2", hslToRgb(h, sat * 0.90, 0.38));
+  root.style.setProperty("--scndry3", hslToRgb(h, sat * 0.80, 0.25));
+  root.style.setProperty("--scndry4", hslToRgb(h, sat * 0.70, 0.13));
+}
+
 function applyAdaptiveColor(track) {
   if (localStorage.getItem("sp_adaptive_color") === "1" && track && track.image) {
-    extractHueFromImageUrl(track.image).then(res => applyHue(res.h, res.s));
+    extractHueFromImageUrl(track.image).then(res => {
+      applyHue(res.h, res.s);
+      applySecondaryHue(res.secondaryH, res.secondaryS);
+    });
   }
 }
 
@@ -167,19 +236,20 @@ function applyHue(h, s = 0.73) {
 
 async function extractHueFromImageUrl(url) {
   return new Promise(resolve => {
-    if (!url) { resolve({ h: 141, s: 0.73 }); return; }
+    if (!url) { resolve({ h: 141, s: 0.73, secondaryH: 202, secondaryS: 0.73 }); return; }
     const img = new Image();
     img.crossOrigin = "Anonymous";
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      canvas.width = 40;
-      canvas.height = 40;
+      canvas.width = 100;
+      canvas.height = 100;
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, 40, 40);
+      ctx.drawImage(img, 0, 0, 100, 100);
       try {
-        const data = ctx.getImageData(0, 0, 40, 40).data;
+        const data = ctx.getImageData(0, 0, 100, 100).data;
         let colorBuckets = {};
-        let colorCount = 0;
+        let bucketSatSum = {};
+        let bucketWeightSum = {};
         let totalWeightedS = 0;
         let totalWeight = 0;
         let fallbackHue = 141;
@@ -203,9 +273,10 @@ async function extractHueFromImageUrl(url) {
             const hueBin = Math.round(h / 15) * 15;
             const weight = (s + 0.1) * (1 - Math.abs(l - 0.5));
             colorBuckets[hueBin] = (colorBuckets[hueBin] || 0) + weight;
+            bucketSatSum[hueBin] = (bucketSatSum[hueBin] || 0) + s * weight;
+            bucketWeightSum[hueBin] = (bucketWeightSum[hueBin] || 0) + weight;
             totalWeightedS += s * weight;
             totalWeight += weight;
-            colorCount++;
           }
         }
         let bestHue = fallbackHue;
@@ -216,13 +287,31 @@ async function extractHueFromImageUrl(url) {
             bestHue = Number(hueStr);
           }
         }
+        let secondaryHue = (bestHue + 180) % 360;
+        let secondaryMaxWeight = -1;
+        for (const [hueStr, weight] of Object.entries(colorBuckets)) {
+          const candidateHue = Number(hueStr);
+          if (circularHueDistance(candidateHue, bestHue) >= 60 && weight > secondaryMaxWeight) {
+            secondaryMaxWeight = weight;
+            secondaryHue = candidateHue;
+          }
+        }
         const avgS = totalWeight > 0 ? totalWeightedS / totalWeight : 0;
-        resolve({ h: isNaN(bestHue) ? 141 : bestHue, s: Math.max(0, avgS) });
+        const rawSecS = secondaryMaxWeight > 0 && bucketWeightSum[secondaryHue]
+          ? bucketSatSum[secondaryHue] / bucketWeightSum[secondaryHue]
+          : 0;
+        const secS = rawSecS < 0.12 ? 0 : rawSecS;
+        resolve({
+          h: isNaN(bestHue) ? 141 : bestHue,
+          s: Math.max(0, avgS),
+          secondaryH: isNaN(secondaryHue) ? 202 : secondaryHue,
+          secondaryS: Math.max(0, secS)
+        });
       } catch (e) {
-        resolve({ h: 141, s: 0.73 });
+        resolve({ h: 141, s: 0.73, secondaryH: 202, secondaryS: 0.73 });
       }
     };
-    img.onerror = () => resolve({ h: 141, s: 0.73 });
+    img.onerror = () => resolve({ h: 141, s: 0.73, secondaryH: 202, secondaryS: 0.73 });
     img.src = url;
   });
 }
@@ -237,6 +326,14 @@ function openColorTool() {
   let currentHue = prevHue;
   let currentSat = prevSat;
   let adaptiveActive = prevAdaptive;
+
+  const restoreDefaultSecondary = () => {
+    const root = document.documentElement;
+    root.style.setProperty("--scndry1", "rgb(155, 165, 175)");
+    root.style.setProperty("--scndry2", "rgb(110, 120, 130)");
+    root.style.setProperty("--scndry3", "rgb(70, 78, 86)");
+    root.style.setProperty("--scndry4", "rgb(22, 26, 30)");
+  };
 
   const panel = document.createElement("div");
   panel.id = "tool-panel";
@@ -254,11 +351,15 @@ function openColorTool() {
     if (adaptiveActive) {
       localStorage.setItem("sp_adaptive_color", "1");
       if (currentTrack && currentTrack.image) {
-        extractHueFromImageUrl(currentTrack.image).then(res => applyHue(res.h, res.s));
+        extractHueFromImageUrl(currentTrack.image).then(res => {
+          applyHue(res.h, res.s);
+          applySecondaryHue(res.secondaryH, res.secondaryS);
+        });
       }
     } else {
       localStorage.setItem("sp_adaptive_color", "0");
       applyHue(prevHue, prevSat);
+      restoreDefaultSecondary();
     }
     closeToolPanel();
   });
@@ -279,7 +380,7 @@ function openColorTool() {
   adaptiveToggle.type = "button";
   adaptiveToggle.className = "skip-toggle" + (adaptiveActive ? " on" : "");
   adaptiveToggle.innerHTML = adaptiveActive ? '<i class="fa-solid fa-toggle-on"></i><span>ON</span>' : '<i class="fa-solid fa-toggle-off"></i><span>OFF</span>';
-  
+
   adaptiveToggle.addEventListener("click", async () => {
     adaptiveActive = !adaptiveActive;
     adaptiveToggle.classList.toggle("on", adaptiveActive);
@@ -294,8 +395,10 @@ function openColorTool() {
       }
       const res = await extractHueFromImageUrl(imgUrl);
       applyHue(res.h, res.s);
+      applySecondaryHue(res.secondaryH, res.secondaryS);
     } else {
       applyHue(currentHue, currentSat);
+      restoreDefaultSecondary();
     }
   });
   adaptiveRow.append(adaptiveLabel, adaptiveToggle);
@@ -358,6 +461,7 @@ function openColorTool() {
     slider.disabled = false;
     satSlider.disabled = false;
     applyHue(141, 0.73);
+    restoreDefaultSecondary();
   });
 
   const rightActions = document.createElement("div");
@@ -371,11 +475,15 @@ function openColorTool() {
     if (prevAdaptive) {
       localStorage.setItem("sp_adaptive_color", "1");
       if (currentTrack && currentTrack.image) {
-        extractHueFromImageUrl(currentTrack.image).then(res => applyHue(res.h, res.s));
+        extractHueFromImageUrl(currentTrack.image).then(res => {
+          applyHue(res.h, res.s);
+          applySecondaryHue(res.secondaryH, res.secondaryS);
+        });
       }
     } else {
       localStorage.setItem("sp_adaptive_color", "0");
       applyHue(prevHue, prevSat);
+      restoreDefaultSecondary();
     }
     closeToolPanel();
   });
@@ -388,6 +496,7 @@ function openColorTool() {
     localStorage.setItem("sp_theme_hue", String(currentHue));
     localStorage.setItem("sp_theme_sat", String(currentSat));
     localStorage.setItem("sp_adaptive_color", adaptiveActive ? "1" : "0");
+    if (!adaptiveActive) restoreDefaultSecondary();
     panel.remove();
     setFeedback("Theme color saved", false);
   });
@@ -398,6 +507,8 @@ function openColorTool() {
 
   document.getElementById("tool-panel-host").appendChild(panel);
 }
+
+
 
 function showAppDialog({ type = "change", isQuestion = false, title = "", text = "", onConfirm = null, onCancel = null } = {}) {
   const existing = document.getElementById("app-custom-dialog");
@@ -417,10 +528,10 @@ function showAppDialog({ type = "change", isQuestion = false, title = "", text =
 
   const overlay = document.createElement("div");
   overlay.id = "app-custom-dialog";
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(10,13,18,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
+  overlay.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,13,18,0.8);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;box-sizing:border-box;";
 
   const box = document.createElement("div");
-  box.style.cssText = "background:var(--surface);border:1px solid " + borderColor + ";border-radius:var(--r-lg);width:min(400px,90vw);padding:20px;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 24px rgba(0,0,0,0.5);color:var(--text);position:relative;font-family:inherit;";
+  box.style.cssText = "background:var(--surface);border:1px solid " + borderColor + ";border-radius:var(--r-lg);width:min(400px,90vw);padding:20px;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 24px rgba(0,0,0,0.5);color:var(--text);position:relative;font-family:inherit;box-sizing:border-box;";
 
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
@@ -1597,83 +1708,8 @@ function renderSourceGrid() {
     grid.id = "source-grid";
     el.source.parentElement.insertBefore(grid, el.source);
   }
-  
-  grid.style.display = sourcesCollapsed ? "none" : "grid";
-  
-  grid.innerHTML = "";
-  const saved = sourceName();
-  for (const name of SOURCE_CANDIDATES) {
-    const entry = PLAYLISTS[name] || cache[name];
-    if (!entry) continue;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.dataset.name = name;
-    btn.className = "source-tile" + (name === saved ? " active" : "");
-    btn.style.position = "relative";
-    
-    const img = document.createElement("img");
-    img.alt = "";
-    bindImg(img, entry.image || (cache[name] && cache[name].image));
-    const label = document.createElement("span");
-    label.textContent = entry.label || name;
-    
-    btn.append(img, label);
-
-    if (entry.local || (PLAYLISTS[name] && PLAYLISTS[name].local)) {
-      const minus = document.createElement("span");
-      minus.className = "grid-minus";
-      minus.setAttribute("role", "button");
-      minus.textContent = "-";
-      minus.title = "Delete local playlist";
-      minus.style.cssText = "position:absolute;top:6px;left:6px;z-index:2;background:rgba(10,13,18,0.8);border:none;width:22px;height:22px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:bold;cursor:pointer;";
-      
-      const badge = document.createElement("span");
-      badge.className = "local-badge";
-      badge.textContent = "local";
-      badge.style.cssText = "position:absolute;bottom:26px;left:6px;z-index:2;font-size:9px;background:rgba(10,13,18,0.85);color:var(--muted);padding:1px 5px;border-radius:4px;letter-spacing:0.04em;";
-      
-      minus.addEventListener("click", async ev => {
-        ev.stopPropagation();
-        showAppDialog({
-          type: "delete",
-          isQuestion: true,
-          title: "Delete Local Playlist",
-          text: "Are you sure you want to delete local playlist " + name + "?",
-          onConfirm: async () => {
-            try {
-              const token = !OFFLINE ? await getToken() : "";
-              await fetch(LOCAL_PLAYLISTS_DELETE_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ accessToken: token, playlistId: entry.id })
-              });
-            } catch (err) {
-              console.warn("[local] delete failed from Wix", err.message);
-            }
-            delete PLAYLISTS[name];
-            delete cache[name];
-            const idx = SOURCE_CANDIDATES.indexOf(name);
-            if (idx !== -1) SOURCE_CANDIDATES.splice(idx, 1);
-            writeCache();
-            if (sourceName() === name && SOURCE_CANDIDATES.length) {
-              selectSource(SOURCE_CANDIDATES[0]);
-            }
-            renderGrid();
-            renderSourceGrid();
-            renderTracks();
-            setFeedback("deleted local playlist " + name, false);
-          }
-        });
-      });
-      btn.append(minus, badge);
-    }
-
-    btn.title = "Click to load · double-click to play";
-    btn.addEventListener("click", () => selectSource(name));
-    btn.addEventListener("dblclick", () => selectSource(name, true));
-    grid.appendChild(btn);
-  }
   el.source.style.display = "none";
+  renderGrid("source");
   grid.style.display = sourcesCollapsed ? "none" : "grid";
 }
 
@@ -1911,9 +1947,21 @@ function closeToolPanel() {
   if (toolsBtn) toolsBtn.classList.remove("active");
 }
 
+function setTracksOpen(open) {
+  const songsToggle = document.querySelector(".songs-row .outline-btn");
+  const songsTools = document.querySelector(".songs-tools");
+  const songsFilters = document.querySelector(".songs-filters");
+  if (!el.list) return;
+  el.list.style.display = open ? "grid" : "none";
+  if (songsTools) songsTools.style.display = open ? "flex" : "none";
+  if (songsFilters) songsFilters.style.display = open ? "flex" : "none";
+  if (songsToggle) songsToggle.classList.toggle("active", Boolean(open));
+}
+
 async function selectSource(name, play) {
   if (play) changedPlayingNow();
   localStorage.setItem(SOURCE_KEY, name);
+  setTracksOpen(true);
   
   sourcesCollapsed = true;
   localStorage.setItem("sp_sources_collapsed", "1");
@@ -2119,19 +2167,21 @@ function highlightTracks() {
   }
 }
 
-function hiddenGrid() {
-  const raw = localStorage.getItem(GRID_HIDE_KEY);
+function hiddenGrid(gridKey = "target") {
+  const storageKey = gridKey === "source" ? "sp_source_hidden" : GRID_HIDE_KEY;
+  const raw = localStorage.getItem(storageKey);
   return raw ? JSON.parse(raw) : [];
 }
 
 let showHiddenGrid = false;
 
-function hideGrid(name, value) {
-  const list = hiddenGrid();
+function hideGrid(name, value, gridKey = "target") {
+  const storageKey = gridKey === "source" ? "sp_source_hidden" : GRID_HIDE_KEY;
+  const list = hiddenGrid(gridKey);
   const idx = list.indexOf(name);
   if (value && idx === -1) list.push(name);
   if (!value && idx !== -1) list.splice(idx, 1);
-  localStorage.setItem(GRID_HIDE_KEY, JSON.stringify(list));
+  localStorage.setItem(storageKey, JSON.stringify(list));
 }
 
 function sameRecording(a, b) {
@@ -2156,24 +2206,27 @@ function sameRecording(a, b) {
 function markGridHasTrack() {
   const cur = currentTrack && currentTrack.uri;
   if (!cur) return;
-  
+
   for (const btn of el.grid.children) {
     const entry = cache[btn.dataset.name];
     if (!entry || !entry.tracks) continue;
-    
-    if (!entry._uriSet || entry._uriSetTimestamp !== entry.tracks.length) {
+
+    if (!(entry._uriSet instanceof Set) || entry._uriSetTimestamp !== entry.tracks.length) {
       entry._uriSet = new Set(entry.tracks.map(t => t.uri));
       entry._uriSetTimestamp = entry.tracks.length;
     }
-    
+
     const has = entry._uriSet.has(cur);
     btn.classList.toggle("has-track", Boolean(has));
   }
 }
 
-function gridOrder() {
-  const current = Object.keys(PLAYLISTS).filter(n => !PLAYLISTS[n].extra);
-  const raw = localStorage.getItem("sp_grid_order");
+function gridOrder(gridKey = "target") {
+  const storageKey = gridKey === "source" ? "sp_source_order" : "sp_grid_order";
+  const current = gridKey === "source"
+    ? [...SOURCE_CANDIDATES]
+    : Object.keys(PLAYLISTS).filter(n => !PLAYLISTS[n].extra);
+  const raw = localStorage.getItem(storageKey);
   if (!raw) return current;
   try {
     const stored = JSON.parse(raw);
@@ -2196,8 +2249,9 @@ function moveInGridOrder(name, dir) {
   renderGrid();
 }
 
-function saveGridOrder(order) {
-  localStorage.setItem("sp_grid_order", JSON.stringify(order));
+function saveGridOrder(order, gridKey = "target") {
+  const storageKey = gridKey === "source" ? "sp_source_order" : "sp_grid_order";
+  localStorage.setItem(storageKey, JSON.stringify(order));
 }
 
 function onDragMove(ev) {
@@ -2252,96 +2306,83 @@ function onPointerUp() {
   dragPointerId = null;
 }
 
-function renderGrid() {
-  el.grid.innerHTML = "";
-  const hidden = hiddenGrid();
+function renderGrid(gridKey = "target") {
+  const isSource = gridKey === "source";
+  const gridEl = isSource ? document.getElementById("source-grid") : el.grid;
+  if (!gridEl) return;
+  gridEl.innerHTML = "";
+  const hidden = hiddenGrid(gridKey);
   const cur = currentTrack && currentTrack.uri;
-  for (const name of gridOrder()) {
-    const entry = PLAYLISTS[name];
-    if (!entry || entry.extra) continue;
+  const orderedNames = isSource
+    ? [...new Set([...gridOrder("source"), ...SOURCE_CANDIDATES])]
+    : gridOrder("target");
+
+  for (const name of orderedNames) {
+    const entry = PLAYLISTS[name] || cache[name];
+    if (!entry) continue;
+    if (!isSource && (!PLAYLISTS[name] || entry.extra)) continue;
     const isHidden = hidden.includes(name);
     if (isHidden && !showHiddenGrid) continue;
+
     const btn = document.createElement("button");
     btn.type = "button";
     btn.dataset.name = name;
+    btn.className = isSource
+      ? "source-tile" + (name === sourceName() ? " active" : "")
+      : "";
+    btn.style.position = "relative";
     if (isHidden) btn.classList.add("hidden-tile");
+
     const img = document.createElement("img");
     img.alt = "";
     bindImg(img, entry.image || (cache[name] && cache[name].image));
     const label = document.createElement("span");
-    label.textContent = entry.label;
-
+    label.textContent = entry.label || name;
     btn.append(img, label);
 
-    const cachedEntry = cache[name];
-    const isWixSynced = cachedEntry && cachedEntry.tracks && cachedEntry.tracks.length > 0 && !cachedEntry.partial;
+    if (isSource && entry.local) {
+      const badge = document.createElement("span");
+      badge.className = "local-badge";
+      badge.textContent = "local";
+      badge.style.cssText = "position:absolute;bottom:26px;left:6px;z-index:2;font-size:9px;background:var(--scndry1);color:var(--bg);padding:1px 5px;border-radius:4px;letter-spacing:0.04em;";
+      btn.appendChild(badge);
+    }
 
-    if (isWixSynced && !entry.local) {
-      const syncedBadge = document.createElement("span");
-      syncedBadge.className = "local-badge";
-      syncedBadge.textContent = "synced";
-      syncedBadge.style.cssText = "position:absolute;bottom:26px;left:6px;z-index:2;font-size:9px;background:rgba(10,13,18,0.85);color:var(--muted);padding:1px 5px;border-radius:4px;letter-spacing:0.04em;";
-      btn.style.position = "relative";
-      btn.appendChild(syncedBadge);
+    if (!isSource) {
+      const cachedEntry = cache[name];
+      const isWixSynced = cachedEntry && cachedEntry.tracks && cachedEntry.tracks.length > 0 && !cachedEntry.partial;
+      if (isWixSynced && !entry.local) {
+        const syncedBadge = document.createElement("span");
+        syncedBadge.className = "local-badge";
+        syncedBadge.textContent = "synced";
+        syncedBadge.style.cssText = "position:absolute;bottom:26px;left:6px;z-index:2;font-size:9px;background:rgba(10,13,18,0.85);color:var(--muted);padding:1px 5px;border-radius:4px;letter-spacing:0.04em;";
+        btn.appendChild(syncedBadge);
+      }
     }
 
     if (reorderMode) {
-      const badge = document.createElement("span");
-      badge.className = "grid-minus";
-      badge.setAttribute("role", "button");
-      badge.textContent = isHidden ? "+" : "-";
-      badge.title = isHidden ? "Show playlist" : "Hide playlist";
-      badge.addEventListener("click", async ev => {
-        ev.stopPropagation();
-        hideGrid(name, !isHidden);
-        renderGrid();
-      });
-
-      const sync = document.createElement("span");
-      sync.className = "grid-sync";
-      sync.setAttribute("role", "button");
-      sync.innerHTML = '<i class="fa-solid fa-rotate"></i>';
-      sync.title = "Sync this playlist";
-      sync.addEventListener("click", async ev => {
-        ev.stopPropagation();
-        if (sync.classList.contains("busy")) return;
-
-        showAppDialog({
-          type: "change",
-          isQuestion: true,
-          title: "Sync Playlist",
-          text: "Do you want to sync " + name + " with Spotify now?",
-          onConfirm: async () => {
-            sync.classList.add("busy");
-            try {
-              const token = await getToken();
-              const changed = await syncPlaylist(name, token);
-              if (changed) {
-                try { await commitPlaylist(name, token); } catch (_) {}
-                setFeedback("synced " + name, false);
-              } else {
-                setFeedback("synced " + name + " (unchanged)", false);
-              }
-              renderGrid();
-              renderTracks();
-            } catch (err) {
-              setFeedback(err.message, true);
-            } finally {
-              sync.classList.remove("busy");
-            }
-          }
+      if (isSource && !entry.local) {
+        const minus = document.createElement("span");
+        minus.className = "grid-minus";
+        minus.setAttribute("role", "button");
+        minus.textContent = isHidden ? "+" : "-";
+        minus.title = isHidden ? "Show playlist" : "Hide playlist";
+        minus.addEventListener("click", ev => {
+          ev.stopPropagation();
+          hideGrid(name, !isHidden, "source");
+          renderGrid("source");
         });
-      });
+        btn.appendChild(minus);
+      }
 
-      if (entry.local) {
-        sync.style.right = "58px";
-        const delBtn = document.createElement("span");
-        delBtn.className = "grid-sync";
-        delBtn.setAttribute("role", "button");
-        delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
-        delBtn.title = "Delete local playlist";
-        delBtn.style.right = "32px";
-        delBtn.addEventListener("click", async ev => {
+      if (isSource && entry.local) {
+        const minus = document.createElement("span");
+        minus.className = "grid-minus";
+        minus.setAttribute("role", "button");
+        minus.textContent = "-";
+        minus.title = "Delete local playlist";
+        minus.style.cssText = "position:absolute;top:6px;left:6px;z-index:2;background:rgba(10,13,18,0.8);border:none;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--text);font-weight:bold;cursor:pointer;";
+        minus.addEventListener("click", async ev => {
           ev.stopPropagation();
           showAppDialog({
             type: "delete",
@@ -2356,7 +2397,9 @@ function renderGrid() {
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ accessToken: token, playlistId: entry.id })
                 });
-              } catch (_) {}
+              } catch (err) {
+                console.warn("[local] delete failed from Wix", err.message);
+              }
               delete PLAYLISTS[name];
               delete cache[name];
               const idx = SOURCE_CANDIDATES.indexOf(name);
@@ -2365,22 +2408,113 @@ function renderGrid() {
               if (sourceName() === name && SOURCE_CANDIDATES.length) {
                 selectSource(SOURCE_CANDIDATES[0]);
               }
-              renderGrid();
-              renderSourceGrid();
+              renderGrid("target");
+              renderGrid("source");
               renderTracks();
               setFeedback("deleted local playlist " + name, false);
             }
           });
         });
-        btn.append(badge, delBtn, sync);
-      } else {
-        btn.append(badge, sync);
+        btn.appendChild(minus);
       }
-      
+
+      if (!isSource) {
+        const badge = document.createElement("span");
+        badge.className = "grid-minus";
+        badge.setAttribute("role", "button");
+        badge.textContent = isHidden ? "+" : "-";
+        badge.title = isHidden ? "Show playlist" : "Hide playlist";
+        badge.addEventListener("click", async ev => {
+          ev.stopPropagation();
+          hideGrid(name, !isHidden, "target");
+          renderGrid("target");
+        });
+
+        const sync = document.createElement("span");
+        sync.className = "grid-sync";
+        sync.setAttribute("role", "button");
+        sync.innerHTML = '<i class="fa-solid fa-rotate"></i>';
+        sync.title = "Sync this playlist";
+        sync.addEventListener("click", async ev => {
+          ev.stopPropagation();
+          if (sync.classList.contains("busy")) return;
+
+          showAppDialog({
+            type: "change",
+            isQuestion: true,
+            title: "Sync Playlist",
+            text: "Do you want to sync " + name + " with Spotify now?",
+            onConfirm: async () => {
+              sync.classList.add("busy");
+              try {
+                const token = await getToken();
+                const changed = await syncPlaylist(name, token);
+                if (changed) {
+                  try { await commitPlaylist(name, token); } catch (_) {}
+                  setFeedback("synced " + name, false);
+                } else {
+                  setFeedback("synced " + name + " (unchanged)", false);
+                }
+                renderGrid("target");
+                renderTracks();
+              } catch (err) {
+                setFeedback(err.message, true);
+              } finally {
+                sync.classList.remove("busy");
+              }
+            }
+          });
+        });
+
+        if (entry.local) {
+          sync.style.right = "58px";
+          const delBtn = document.createElement("span");
+          delBtn.className = "grid-sync";
+          delBtn.setAttribute("role", "button");
+          delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+          delBtn.title = "Delete local playlist";
+          delBtn.style.right = "32px";
+          delBtn.addEventListener("click", async ev => {
+            ev.stopPropagation();
+            showAppDialog({
+              type: "delete",
+              isQuestion: true,
+              title: "Delete Local Playlist",
+              text: "Are you sure you want to delete local playlist " + name + "?",
+              onConfirm: async () => {
+                try {
+                  const token = !OFFLINE ? await getToken() : "";
+                  await fetch(LOCAL_PLAYLISTS_DELETE_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ accessToken: token, playlistId: entry.id })
+                  });
+                } catch (_) {}
+                delete PLAYLISTS[name];
+                delete cache[name];
+                const idx = SOURCE_CANDIDATES.indexOf(name);
+                if (idx !== -1) SOURCE_CANDIDATES.splice(idx, 1);
+                writeCache();
+                if (sourceName() === name && SOURCE_CANDIDATES.length) {
+                  selectSource(SOURCE_CANDIDATES[0]);
+                }
+                renderGrid("target");
+                renderGrid("source");
+                renderTracks();
+                setFeedback("deleted local playlist " + name, false);
+              }
+            });
+          });
+          btn.append(badge, delBtn, sync);
+        } else {
+          btn.append(badge, sync);
+        }
+      }
+
       btn.classList.add("reordering");
 
       btn.addEventListener("pointerdown", ev => {
-        if (ev.button !== 0 || ev.target.closest(".grid-minus, .grid-sync")) return;
+        if (ev.button !== 0 || ev.target.closest(".grid-minus, .grid-sync, .grid-edit")) return;
         ev.preventDefault();
         const startX = ev.clientX;
         const startY = ev.clientY;
@@ -2392,12 +2526,12 @@ function renderGrid() {
             if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) < 6) return;
             dragging = true;
             btn.classList.add("moving");
-            el.grid.classList.add("has-moving");
+            gridEl.classList.add("has-moving");
             const sel = window.getSelection();
             if (sel) sel.removeAllRanges();
           }
 
-          const buttons = [...el.grid.querySelectorAll("button[data-name]")];
+          const buttons = [...gridEl.querySelectorAll("button[data-name]")];
           const target = buttons.find(b => {
             if (b === btn) return false;
             const r = b.getBoundingClientRect();
@@ -2414,11 +2548,11 @@ function renderGrid() {
           if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
             order.splice(fromIdx, 1);
             order.splice(toIdx, 0, name);
-            
+
             const map = new Map(buttons.map(b => [b.dataset.name, b]));
             order.forEach(n => {
               const node = map.get(n);
-              if (node) el.grid.appendChild(node);
+              if (node) gridEl.appendChild(node);
             });
           }
         };
@@ -2429,14 +2563,14 @@ function renderGrid() {
           document.removeEventListener("pointercancel", onUp);
           if (!dragging) return;
           btn.classList.remove("moving");
-          el.grid.classList.remove("has-moving");
+          gridEl.classList.remove("has-moving");
           btn.dataset.justDragged = "1";
           setTimeout(() => { delete btn.dataset.justDragged; }, 150);
 
-          const visible = [...el.grid.querySelectorAll("button[data-name]")].map(b => b.dataset.name);
-          const previous = gridOrder();
+          const visible = [...gridEl.querySelectorAll("button[data-name]")].map(b => b.dataset.name);
+          const previous = gridOrder(gridKey);
           const hiddenOnes = previous.filter(n => !visible.includes(n));
-          saveGridOrder([...visible, ...hiddenOnes]);
+          saveGridOrder([...visible, ...hiddenOnes], gridKey);
         };
 
         document.addEventListener("pointermove", onMove);
@@ -2444,18 +2578,31 @@ function renderGrid() {
         document.addEventListener("pointercancel", onUp);
       });
     }
-    const has = cur && cache[name] && cache[name].tracks && cache[name].tracks.some(t => sameRecording(t, currentTrack));
-    if (has) btn.classList.add("has-track");
 
-    btn.addEventListener("click", () => {
-      if (reorderMode || btn.dataset.justDragged) return;
-      onAdd(name, btn);
-    });
+    if (isSource) {
+      btn.title = "Click to load · double-click to play";
+      btn.addEventListener("click", () => {
+        if (reorderMode || btn.dataset.justDragged) return;
+        selectSource(name);
+      });
+      btn.addEventListener("dblclick", () => {
+        if (reorderMode || btn.dataset.justDragged) return;
+        selectSource(name, true);
+      });
+    } else {
+      const has = cur && cache[name] && cache[name].tracks && cache[name].tracks.some(t => sameRecording(t, currentTrack));
+      if (has) btn.classList.add("has-track");
+      btn.addEventListener("click", () => {
+        if (reorderMode || btn.dataset.justDragged) return;
+        onAdd(name, btn);
+      });
+    }
 
-    el.grid.appendChild(btn);
+    gridEl.appendChild(btn);
   }
-  el.grid.classList.toggle("has-moving", Boolean(movingTile));
-  paintTargetBar();
+
+  gridEl.classList.toggle("has-moving", Boolean(movingTile));
+  if (!isSource) paintTargetBar();
 }
 
 async function removeTrack(track, name, token) {
@@ -2711,16 +2858,18 @@ async function onPlayerState(state) {
     ? prev.track_window.current_track.uri
     : null;
   if (sdkTrack && sdkTrack.uri !== prevUri) {
-    if (previewRunning && currentTrack && currentTrack.uri !== sdkTrack.uri) previewAbort = true;
+    previewAbort = true;
+    previewRunning = false;
     closeVersionsPanel();
     resetPresets();
     endHandledFor = null;
     if (previewMode) {
+      const targetUri = sdkTrack.uri;
       setTimeout(() => {
-        if (previewMode && !previewRunning) {
-          previewAbort = false;
-          runPreviewForCurrent();
-        }
+        if (!previewMode || previewRunning) return;
+        if (!currentTrack || currentTrack.uri !== targetUri) return;
+        previewAbort = false;
+        runPreviewForCurrent();
       }, 700);
     }
   }
@@ -3582,6 +3731,8 @@ async function previewAdvance() {
   if (!candidate) return false;
   try {
     const token = await getToken();
+    previewRunning = false;
+    previewAbort = false;
     currentTrack = candidate;
     updatePlayerBar(candidate);
     await playFromGesture(candidate, token);
@@ -3589,11 +3740,10 @@ async function previewAdvance() {
     highlightTracks();
     const scheduledUri = candidate.uri;
     setTimeout(() => {
-      if (!previewMode) return;
+      if (!previewMode || previewRunning) return;
       if (!currentTrack || currentTrack.uri !== scheduledUri) return;
-      previewAbort = false;
       runPreviewForCurrent();
-    }, 300);
+    }, 600);
     return true;
   } catch (err) {
     setFeedback(err.message, true);
@@ -3653,38 +3803,37 @@ async function previewWaitUntil(targetMs, durationMs) {
 }
 
 async function runPreviewForCurrent() {
-  if (!player || !currentTrack || previewRunning || !previewMode) {
-    console.log("[preview] start refused", { player: !!player, track: !!currentTrack, running: previewRunning, mode: previewMode });
-    return;
-  }
+  if (!player || !currentTrack || previewRunning || !previewMode) return;
   previewRunning = true;
   previewAbort = false;
   presetTracking = true;
   lastPaintedPreset = null;
   const startedUri = currentTrack.uri;
   const durationMs = currentTrack.durationMs;
-  console.log("[preview] start", { uri: startedUri, durationMs });
   const parts = previewPresets.split("").filter(p => "ABCDE".includes(p));
   if (!parts.length) parts.push("A", "B", "C", "D", "E");
-  for (const part of parts) {
-    if (previewAbort || !previewMode || !currentTrack || currentTrack.uri !== startedUri) break;
-    const seekTo = previewPosition(durationMs, part);
-    const cur = await player.getCurrentState();
-    if (!(cur && Math.abs(cur.position - seekTo) < 1000)) {
-      await seekPreview(durationMs, part);
+
+  try {
+    for (const part of parts) {
+      if (previewAbort || !previewMode || !currentTrack || currentTrack.uri !== startedUri) break;
+      const seekTo = previewPosition(durationMs, part);
+      const cur = await player.getCurrentState();
+      if (!(cur && Math.abs(cur.position - seekTo) < 1000)) {
+        await seekPreview(durationMs, part);
+      }
+      await new Promise(r => setTimeout(r, 300));
+      const ok = await previewWaitUntil(seekTo + previewSeconds * 1000, durationMs);
+      if (!ok) break;
     }
-    await new Promise(r => setTimeout(r, 300));
-    const ok = await previewWaitUntil(seekTo + previewSeconds * 1000, durationMs);
-    if (!ok) break;
-  }
-  presetTracking = false;
-  resetPresets();
-  const wasAborted = previewAbort || !previewMode;
-  previewAbort = false;
-  previewRunning = false;
-  console.log("[preview] end", { wasAborted, hasTrack: !!currentTrack, sameUri: currentTrack ? currentTrack.uri === startedUri : false });
-  if (previewMode && !wasAborted && currentTrack && currentTrack.uri === startedUri) {
-    try { await previewAdvance(); } catch (_) { /* handled inside */ }
+  } finally {
+    presetTracking = false;
+    resetPresets();
+    const wasAborted = previewAbort || !previewMode;
+    previewAbort = false;
+    previewRunning = false;
+    if (previewMode && !wasAborted && currentTrack && currentTrack.uri === startedUri) {
+      try { await previewAdvance(); } catch (_) {}
+    }
   }
 }
 
@@ -4315,7 +4464,6 @@ const filterBtn = document.createElement("button");
   for (const [part] of presets) {
     const b = document.createElement("button");
     b.type = "button";
-    b.title = part;
     b.className = "np-preset";
     b.textContent = "";
     b.addEventListener("click", () => {
@@ -4478,7 +4626,7 @@ function signOut() {
 function buildSourcesBar() {
   const bar = document.createElement("div");
   bar.className = "sources-bar";
-  
+
   sourcesCollapsed = true;
   localStorage.setItem("sp_sources_collapsed", "1");
 
@@ -4490,7 +4638,18 @@ function buildSourcesBar() {
   const collapse = document.createElement("button");
   collapse.type = "button";
   collapse.className = "sources-collapse";
-  
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "outline-btn-scndry";
+
+  const paintEdit = () => {
+    editBtn.style.display = sourcesCollapsed ? "none" : "inline-flex";
+    editBtn.classList.toggle("on", reorderMode || showHiddenGrid);
+    editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
+    editBtn.title = reorderMode ? "Exit edit mode" : "Edit sources";
+  };
+
   const paintCollapse = () => {
     collapse.innerHTML = sourcesCollapsed
       ? '<i class="fa-solid fa-chevron-down"></i>'
@@ -4499,6 +4658,7 @@ function buildSourcesBar() {
 
     const grid = document.getElementById("source-grid");
     if (grid) grid.style.display = sourcesCollapsed ? "none" : "grid";
+    paintEdit();
   };
 
   paintCollapse();
@@ -4509,10 +4669,19 @@ function buildSourcesBar() {
     paintCollapse();
   });
 
+  editBtn.addEventListener("click", () => {
+    reorderMode = !reorderMode;
+    showHiddenGrid = reorderMode;
+    paintEdit();
+    paintTargetBar();
+    renderGrid("source");
+    renderGrid("target");
+  });
+
   const hint = document.createElement("span");
   hint.className = "sources-hint";
   hint.textContent = "double-click to play";
-  bar.append(label, collapse, hint);
+  bar.append(label, collapse, editBtn, hint);
   return bar;
 }
 function buildTargetBar() {
@@ -4524,7 +4693,7 @@ function buildTargetBar() {
   const progressSpan = document.createElement("span");
   progressSpan.id = "songs-progress";
   progressSpan.className = "songs-progress";
-  
+
   const hierarchyText = document.createElement("span");
   hierarchyText.id = "hierarchy-status-text";
   hierarchyText.style.cssText = "font-size: 11px; color: var(--muted); margin-left: 8px;";
@@ -4538,9 +4707,9 @@ function buildTargetBar() {
 
   const hiddenBtn = document.createElement("button");
   hiddenBtn.type = "button";
-  hiddenBtn.className = "target-toggle";
+  hiddenBtn.className = "outline-btn-scndry";
   const paintHidden = () => {
-    const n = hiddenGrid().length;
+    const n = hiddenGrid("target").length + hiddenGrid("source").length;
     hiddenBtn.classList.toggle("on", showHiddenGrid);
     hiddenBtn.innerHTML = '<i class="fa-solid ' + (showHiddenGrid ? "fa-eye" : "fa-eye-slash") + '"></i><span>Hidden' + (n ? " · " + n : "") + '</span>';
     hiddenBtn.title = showHiddenGrid ? "Hide hidden playlists" : "Show hidden playlists";
@@ -4549,12 +4718,13 @@ function buildTargetBar() {
   hiddenBtn.addEventListener("click", () => {
     showHiddenGrid = !showHiddenGrid;
     paintHidden();
-    renderGrid();
+    renderGrid("target");
+    renderGrid("source");
   });
 
   const reorderBtn = document.createElement("button");
   reorderBtn.type = "button";
-  reorderBtn.className = "target-toggle";
+  reorderBtn.className = "outline-btn-scndry";
   const paintReorder = () => {
     reorderBtn.classList.toggle("on", reorderMode || showHiddenGrid);
     reorderBtn.innerHTML = '<i class="fa-solid fa-pen"></i><span>' + (reorderMode ? "Done" : "Edit") + '</span>';
@@ -4565,13 +4735,15 @@ function buildTargetBar() {
     reorderMode = !reorderMode;
     showHiddenGrid = reorderMode;
     paintReorder();
-    renderGrid();
+    paintHidden();
+    renderGrid("target");
+    renderGrid("source");
   });
 
   const pendingBtn = document.createElement("button");
   pendingBtn.type = "button";
   pendingBtn.id = "pending-btn";
-  pendingBtn.className = "target-toggle";
+  pendingBtn.className = "outline-btn-scndry";
   pendingBtn.innerHTML = '<i class="fa-solid fa-clock"></i><span>Pending</span>';
   pendingBtn.style.display = "none";
   pendingBtn.title = "Replay queued changes";
@@ -4618,14 +4790,14 @@ function buildHeader() {
   offlineBadge.id = "offline-mode-badge";
   offlineBadge.className = "offline-badge-full";
   offlineBadge.textContent = "OFFLINE MODE";
-  offlineBadge.style.cssText = "display: " + (OFFLINE ? "block" : "none") + "; width: calc(100% + 48px); margin: -20px -24px 20px -24px; background: var(--bg); color: var(--white); font-size: 10px; font-weight: 700; padding: 6px 24px; text-align: center; letter-spacing: 0.05em; box-sizing: border-box;";
+  offlineBadge.style.cssText = "display: " + (OFFLINE ? "block" : "none") + "; width: calc(100% + 48px); margin: -20px -24px 20px -24px; background: var(--backgroundGrad3); color: var(--white); font-size: 10px; font-weight: 700; padding: 6px 24px; text-align: center; letter-spacing: 0.05em; box-sizing: border-box;";
   header.insertAdjacentElement("afterend", offlineBadge);
 
   let bottomVersion = document.getElementById("bottom-version-footer");
   if (!bottomVersion) {
     bottomVersion = document.createElement("div");
     bottomVersion.id = "bottom-version-footer";
-    bottomVersion.style.cssText = "text-align: left; color: var(--accent); font-size: 11px; font-family: monospace; margin: 20px 0 10px 0; padding: 1px;";
+    bottomVersion.style.cssText = "text-align: left; color: var(--scndry1); font-size: 11px; font-family: monospace; margin: 20px 0 10px 0; padding: 1px;";
     el.main.appendChild(bottomVersion);
   }
   bottomVersion.textContent = VERSION_NUMBER;
@@ -4759,8 +4931,9 @@ async function renderToolsGrid() {
 if (t.id === "offline") {
       const paintOfflineTile = () => {
         btn.classList.toggle("active", OFFLINE);
-        btn.style.background = OFFLINE ? "var(--accent)" : "";
+        btn.style.background = OFFLINE ? "var(--primaryGrad)" : "";
         btn.style.color = OFFLINE ? "var(--bg)" : "";
+        btn.style.border = OFFLINE ? "1px solid var(--accent)" : "";
         const icon = btn.querySelector("i");
         if (icon) icon.style.color = OFFLINE ? "var(--bg)" : "";
       };
@@ -5798,6 +5971,30 @@ async function startOfflineSession() {
   setStatus("OFFLINE - Ready");
 }
 
+async function playFirstInSource() {
+  changedPlayingNow();
+  const name = sourceName();
+  const tracks = queueTracks(name);
+  const candidate = playAll
+    ? tracks[0]
+    : (tracks.find(t => !isHidden(name, t.uri)) || tracks[0]);
+  if (!candidate) {
+    setFeedback("ERROR no tracks", true);
+    return;
+  }
+  try {
+    const token = !OFFLINE ? await getToken() : "";
+    currentTrack = candidate;
+    await playFromGesture(candidate, token);
+    updatePlayerBar(candidate);
+    renderTracks();
+    highlightTracks();
+    markGridHasTrack();
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+}
+
 async function boot() {
   installApiCounter();
   renderGrid();
@@ -5903,22 +6100,29 @@ const skipToggle = document.createElement("button");
   const songsTools = document.createElement("div");
   songsTools.className = "songs-tools";
 
+  const playSourceBtn = document.createElement("button");
+  playSourceBtn.type = "button";
+  playSourceBtn.className = "np-toggle";
+  playSourceBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+  playSourceBtn.title = "Play first song in playlist";
+  playSourceBtn.addEventListener("click", () => playFirstInSource());
+
   const unhideBtn = document.createElement("button");
   unhideBtn.type = "button";
-  unhideBtn.className = "outline-btn";
+  unhideBtn.className = "outline-btn-scndry";
   unhideBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Unfilter all</span>';
   unhideBtn.addEventListener("click", () => unhideAll());
 
   const undoBtn = document.createElement("button");
   undoBtn.type = "button";
-  undoBtn.className = "outline-btn";
+  undoBtn.className = "outline-btn-scndry";
   undoBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i><span>Undo</span>';
   undoBtn.title = "Undo last hidden song (Ctrl+Z)";
   undoBtn.addEventListener("click", () => undoLastHide());
 
   const reverseBtn = document.createElement("button");
   reverseBtn.type = "button";
-  reverseBtn.className = "outline-btn";
+  reverseBtn.className = "outline-btn-scndry";
   const paintReverse = () => {
     reverseBtn.classList.toggle("on", reverseOrder);
     reverseBtn.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short"></i><span>Reverse</span>';
@@ -6012,7 +6216,7 @@ const skipToggle = document.createElement("button");
 
   const queueToggle = document.createElement("button");
   queueToggle.type = "button";
-  queueToggle.className = "outline-btn";
+  queueToggle.className = "outline-btn-scndry";
   const paintQueue = () => {
     queueToggle.classList.toggle("on", filterQueue);
     queueToggle.innerHTML = '<i class="fa-solid fa-list-check"></i><span>Queue filter</span>';
@@ -6027,7 +6231,7 @@ const skipToggle = document.createElement("button");
 
   const playAllBtn = document.createElement("button");
   playAllBtn.type = "button";
-  playAllBtn.className = "outline-btn";
+  playAllBtn.className = "outline-btn-scndry";
   const paintPlayAll = () => {
     playAllBtn.classList.toggle("on", playAll);
     playAllBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Play filtered</span>';
@@ -6043,7 +6247,7 @@ const skipToggle = document.createElement("button");
 
   songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle, playAllBtn);
 
-  songsTools.append(unhideBtn, undoBtn, reverseBtn, spacer, songsZoom);
+  songsTools.append(playSourceBtn, unhideBtn, undoBtn, reverseBtn, spacer, songsZoom);
 
   const songsHeader = document.createElement("div");
   songsHeader.className = "songs-header";
@@ -6054,6 +6258,7 @@ const skipToggle = document.createElement("button");
   songsFilters.style.display = "none";
   songsToggle.addEventListener("click", () => {
     const open = el.list.style.display === "none";
+    setTracksOpen(open);
     el.list.style.display = open ? "grid" : "none";
     songsTools.style.display = open ? "flex" : "none";
     songsFilters.style.display = open ? "flex" : "none";
@@ -6094,6 +6299,7 @@ const skipToggle = document.createElement("button");
   panelHost.id = "tool-panel-host";
   toolsHost.append(toolsGrid, panelHost);
   songsPanel.parentElement.insertBefore(toolsHost, songsPanel);
+  createSongsPanelDock()
 
   const toolsBtn = document.createElement("button");
   toolsBtn.type = "button";
