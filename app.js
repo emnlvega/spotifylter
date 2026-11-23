@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.24"
+const VERSION_NUMBER = "v1.24b"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -2117,6 +2117,13 @@ function queueTracks(name) {
   return reverseOrder ? [...all].reverse() : all;
 }
 
+function isSpotifyLocalTrack(trackOrUri) {
+  const uri = typeof trackOrUri === "string"
+    ? trackOrUri
+    : (trackOrUri && trackOrUri.uri) || "";
+  return uri.startsWith("spotify:local:") || uri.includes("/local/");
+}
+
 function renderTracks() {
   const name = sourceName();
   const tracks = displayTracks(name);
@@ -2128,9 +2135,36 @@ function renderTracks() {
 
   const selectedCards = new Set();
   const selectedTracks = new Map();
+  let rangeAnchorIdx = null;
   let selecting = false;
   let justSelected = false;
   let dismissBatchMenu = null;
+  let autoScrollTimer = null;
+
+  const stopAutoScroll = () => {
+    if (autoScrollTimer) {
+      clearInterval(autoScrollTimer);
+      autoScrollTimer = null;
+    }
+  };
+
+  const updateAutoScroll = (clientY, selectAtPointer) => {
+    const edge = 64;
+    const maxStep = 18;
+    let delta = 0;
+    if (clientY < edge) {
+      delta = -Math.ceil(((edge - clientY) / edge) * maxStep);
+    } else if (clientY > window.innerHeight - edge) {
+      delta = Math.ceil(((clientY - (window.innerHeight - edge)) / edge) * maxStep);
+    }
+    stopAutoScroll();
+    if (delta !== 0) {
+      autoScrollTimer = setInterval(() => {
+        window.scrollBy(0, delta);
+        if (selectAtPointer) selectAtPointer();
+      }, 16);
+    }
+  };
 
   const paintCardSelected = (card, isSel) => {
     card.classList.toggle("batch-selected", isSel);
@@ -2140,6 +2174,7 @@ function renderTracks() {
   };
 
   const clearBatchSelection = () => {
+    stopAutoScroll();
     for (const c of selectedCards) {
       paintCardSelected(c, false);
     }
@@ -2196,7 +2231,26 @@ function renderTracks() {
       setFeedback("filtered " + items.length + " songs", false);
     });
 
+    const hasFiltered = items.some(t => isHidden(name, t.uri));
     menu.append(header, addBtn, hideBtn);
+
+    if (hasFiltered) {
+      const unhideBtn = document.createElement("button");
+      unhideBtn.type = "button";
+      unhideBtn.innerHTML = '<i class="fa-solid fa-eye"></i><span>Unfilter songs</span>';
+      unhideBtn.addEventListener("click", ev => {
+        ev.stopPropagation();
+        for (const t of items) {
+          setHidden(name, t.uri, false);
+        }
+        clearBatchSelection();
+        renderTracks();
+        renderGrid();
+        setFeedback("unfiltered " + items.length + " songs", false);
+      });
+      menu.appendChild(unhideBtn);
+    }
+
     document.body.appendChild(menu);
 
     const rect = menu.getBoundingClientRect();
@@ -2230,8 +2284,31 @@ function renderTracks() {
     }
   };
 
+  const selectRange = (startIdx, endIdx, anchorCard, anchorX, anchorY) => {
+    clearBatchSelection();
+    const from = Math.max(0, Math.min(startIdx, endIdx));
+    const to = Math.min(tracks.length - 1, Math.max(startIdx, endIdx));
+    const cardNodes = el.list.querySelectorAll(".track");
+    for (let i = from; i <= to; i++) {
+      const c = cardNodes[i];
+      const t = tracks[i];
+      if (c && t) {
+        paintCardSelected(c, true);
+        selectedCards.add(c);
+        selectedTracks.set(t.uri, t);
+      }
+    }
+    const r = (anchorCard || cardNodes[to]).getBoundingClientRect();
+    openBatchContextMenu(anchorX || r.right, anchorY || r.bottom);
+  };
+
   for (const track of tracks) {
-    const hidden = isHidden(name, track.uri);
+    const cardIdx = idx;
+    const isLocalFile = isSpotifyLocalTrack(track);
+    if (isLocalFile && !isHidden(name, track.uri)) {
+      setHidden(name, track.uri, true);
+    }
+    const hidden = isHidden(name, track.uri) || isLocalFile;
     const card = document.createElement("div");
     card.dataset.index = String(idx);
     card.className = "track" + (currentTrack && sameRecording(track, currentTrack) ? " current" : "") + (hidden ? " dimmed" : "");
@@ -2269,6 +2346,17 @@ function renderTracks() {
       let lastY = ev.clientY;
       const visited = new Set();
 
+      const selectAtCoords = (cx, cy) => {
+        const under = document.elementFromPoint(cx, cy);
+        const targetCard = under && under.closest("#track-list .track");
+        if (!targetCard || visited.has(targetCard)) return;
+        const tIdx = Number(targetCard.dataset.index);
+        const tTrack = tracks[tIdx];
+        if (!tTrack) return;
+        visited.add(targetCard);
+        toggleCardSelection(targetCard, tTrack);
+      };
+
       const onMove = moveEv => {
         lastX = moveEv.clientX;
         lastY = moveEv.clientY;
@@ -2286,17 +2374,12 @@ function renderTracks() {
           visited.add(card);
         }
         if (moveEv.cancelable) moveEv.preventDefault();
-        const under = document.elementFromPoint(moveEv.clientX, moveEv.clientY);
-        const targetCard = under && under.closest("#track-list .track");
-        if (!targetCard || visited.has(targetCard)) return;
-        const tIdx = Number(targetCard.dataset.index);
-        const tTrack = tracks[tIdx];
-        if (!tTrack) return;
-        visited.add(targetCard);
-        toggleCardSelection(targetCard, tTrack);
+        selectAtCoords(lastX, lastY);
+        updateAutoScroll(lastY, () => selectAtCoords(lastX, lastY));
       };
 
       const onUp = () => {
+        stopAutoScroll();
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", onUp);
         document.removeEventListener("pointercancel", onUp);
@@ -2314,6 +2397,24 @@ function renderTracks() {
       document.addEventListener("pointermove", onMove, { passive: false });
       document.addEventListener("pointerup", onUp);
       document.addEventListener("pointercancel", onUp);
+    });
+
+    card.addEventListener("dblclick", ev => {
+      if (ev.target.closest(".track-unhide")) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (rangeAnchorIdx === null) {
+        rangeAnchorIdx = cardIdx;
+        clearBatchSelection();
+        paintCardSelected(card, true);
+        selectedCards.add(card);
+        selectedTracks.set(track.uri, track);
+        setFeedback("Range start set at #" + (cardIdx + 1) + " — double-tap another song", false);
+      } else {
+        const start = rangeAnchorIdx;
+        rangeAnchorIdx = null;
+        selectRange(start, cardIdx, card, ev.clientX, ev.clientY);
+      }
     });
 
     card.addEventListener("contextmenu", ev => {
@@ -3676,6 +3777,8 @@ function lookupTrack(uri) {
 }
 
 function isHidden(name, uri) {
+  if (isSpotifyLocalTrack(uri)) return true;
+
   const map = hiddenMap();
   const list = map[name] || [];
   if (!list.length) return false;
@@ -4964,6 +5067,7 @@ function buildTargetBar() {
   return paintHidden;
 }
 
+
 function buildHeader() {
   if (document.getElementById("app-header")) return;
   const header = document.createElement("header");
@@ -4971,6 +5075,9 @@ function buildHeader() {
   const logo = document.createElement("span");
   logo.className = "header-logo";
   logo.innerHTML = LOGO_SVG;
+  logo.style.cursor = "pointer";
+  logo.title = "Diagnostics & storage";
+  logo.addEventListener("click", () => openDiagnosticsModal());
 
   const wrap = document.createElement("div");
   wrap.className = "header-text";
