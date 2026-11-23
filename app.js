@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.24b"
+const VERSION_NUMBER = "v1.24c"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -91,7 +91,7 @@ let playAll = localStorage.getItem("sp_play_all") === "1";
 let reverseOrder = localStorage.getItem("sp_reverse") === "1";
 let songFilter = "";
 let songSort = "default";
-let songHiddenFilter = "all";
+let songHiddenFilter = "unfiltered";
 let filterQueue = localStorage.getItem("sp_filter_queue") === "1";
 let recentPanel = null;
 let movingTile = null;
@@ -6504,6 +6504,8 @@ const skipToggle = document.createElement("button");
     setFeedback("filter cleared", false);
   });
   filterWrap.append(filterInput, filterClear);
+
+  let songHiddenFilter = "unhidden";
 
   const hiddenSelect = document.createElement("select");
   hiddenSelect.className = "songs-filter-select";
