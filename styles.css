@@ -703,10 +703,33 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
 }
 
+#offline-mode-badge {
+  width: 99.76vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+
+  margin-top: -20px;
+  margin-bottom: 10px;
+
+  background: var(--backgroundGrad3);
+  color: var(--white);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 6px 24px;
+  text-align: center;
+  letter-spacing: 0.05em;
+  box-sizing: border-box;
+}
+
+#offline-mode-badge.offline-badge-hidden {
+  display: none;
+}
+
 @media (max-width: 720px) {
   body { padding: 14px; }
   #player-view { padding: 24px 0; }
   #player-view .np-card { padding: 0; }
+  #offline-mode-badge { width: 100vw; }
 #player-view .np-controls .np-nav {
     position: absolute;
     top: 125px; 
@@ -1547,7 +1570,7 @@ body.auth-mode #auth-box {
   color: var(--white);
 }
 .outline-btn.active {
-  color: var(--blackG);
+  color: var(--white);
   background: var(--primaryGrad);
 }
 
