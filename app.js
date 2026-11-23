@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.25"
+const VERSION_NUMBER = "v1.25b"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -40,7 +40,6 @@ const TOOLS = [
   { id: "intersect", icon: "fa-circle-nodes", label: "Intersect", desc: "Only songs in all selected" },
   { id: "slice",     icon: "fa-scissors",     label: "Slice",     desc: "Split playlist into parts locally" },
   { id: "hierarchy", icon: "fa-sitemap",      label: "Hierarchy", desc: "Auto-add to linked playlists" },
-  { id: "localplaylist", icon: "fa-folder-plus", label: "Local", desc: "Paste tracks and save locally on Wix" },
   { id: "color",     icon: "fa-palette",      label: "Color",     desc: "Customize theme hue and adaptive color" },
   { id: "offline",   icon: "fa-ban",          label: "Offline Mode", desc: "Toggle offline mode" }
 ];
@@ -3673,9 +3672,35 @@ async function openManualPlaylist(token) {
   const title = document.createElement("p");
   title.textContent = "Paste Spotify track links";
   title.style.cssText = "margin:0;font-weight:600;color:var(--text);font-size:16px;";
+  const nameInput = document.createElement("input");
+  nameInput.type = "text";
+  nameInput.placeholder = "Playlist name";
+  nameInput.value = "Manual " + new Date().toISOString().slice(0, 10);
+  nameInput.style.cssText = "width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px;font-size:13px;outline:none;box-sizing:border-box;";
+  const localRow = document.createElement("label");
+  localRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;";
+  const localText = document.createElement("span");
+  localText.textContent = "Local playlist";
+  let isLocal = false;
+  const localToggle = document.createElement("button");
+  localToggle.type = "button";
+  localToggle.className = "skip-toggle";
+  const paintLocalToggle = () => {
+    localToggle.classList.toggle("on", isLocal);
+    localToggle.innerHTML = isLocal
+      ? '<i class="fa-solid fa-toggle-on"></i><span>ON</span>'
+      : '<i class="fa-solid fa-toggle-off"></i><span>OFF</span>';
+  };
+  paintLocalToggle();
+  localToggle.addEventListener("click", ev => {
+    ev.preventDefault();
+    isLocal = !isLocal;
+    paintLocalToggle();
+  });
+  localRow.append(localText, localToggle);
   const area = document.createElement("textarea");
   area.rows = 10;
-  area.style.cssText = "width:100%;resize:vertical;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px;font-family:monospace;font-size:12px;outline:none;";
+  area.style.cssText = "width:100%;resize:vertical;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px;font-family:monospace;font-size:12px;outline:none;box-sizing:border-box;";
   const row = document.createElement("div");
   row.style.cssText = "display:flex;gap:10px;justify-content:flex-end;";
   const cancel = document.createElement("button");
@@ -3687,7 +3712,7 @@ async function openManualPlaylist(token) {
   create.textContent = "Create";
   create.style.cssText = "background:var(--accent);color:var(--blackG);border:none;padding:8px 16px;border-radius:var(--r-sm);font-size:13px;font-weight:700;cursor:pointer;";
   row.append(cancel, create);
-  box.append(title, area, row);
+  box.append(title, nameInput, localRow, area, row);
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   cancel.addEventListener("click", () => overlay.remove());
@@ -3701,11 +3726,94 @@ async function openManualPlaylist(token) {
     create.disabled = true;
     create.textContent = "…";
     try {
-      const name = "Manual " + new Date().toISOString().slice(0, 10);
+      const baseName = nameInput.value.trim() || ("Manual " + new Date().toISOString().slice(0, 10));
+      if (isLocal) {
+        const name = "local: " + baseName;
+        const playlistId = "local_" + Date.now();
+        const activeToken = token || (!OFFLINE ? await getToken() : "");
+        const tracks = [];
+        for (const id of ids) {
+          const uri = "spotify:track:" + id;
+          const cached = lookupTrack(uri);
+          if (cached && cached.name && !String(cached.name).startsWith("Track ") && cached.artists && cached.artists !== "Unknown") {
+            tracks.push({
+              uri: cached.uri || uri,
+              name: cached.name,
+              artists: cached.artists,
+              durationMs: cached.durationMs || 0,
+              image: cached.image || null,
+              isrc: cached.isrc || null
+            });
+            continue;
+          }
+          let resolved = null;
+          if (!OFFLINE && activeToken) {
+            const res = await fetch(`https://api.spotify.com/v1/tracks/${id}`, {
+              headers: { Authorization: "Bearer " + activeToken }
+            });
+            if (res.ok) {
+              const t = await res.json();
+              if (t && t.name) {
+                resolved = {
+                  uri: t.uri || uri,
+                  name: t.name,
+                  artists: (t.artists || []).map(a => a.name).filter(Boolean).join(", ") || "Unknown",
+                  durationMs: t.duration_ms || 0,
+                  image: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : null,
+                  isrc: t.external_ids && t.external_ids.isrc ? t.external_ids.isrc : null
+                };
+              }
+            }
+          }
+          tracks.push(resolved || {
+            uri,
+            name: "Track " + id,
+            artists: "Unknown",
+            durationMs: 0,
+            image: null,
+            isrc: null
+          });
+        }
+        const image = (tracks.find(t => t.image) || {}).image || null;
+        PLAYLISTS[name] = { id: playlistId, label: name, image, local: true };
+        if (!SOURCE_CANDIDATES.includes(name)) SOURCE_CANDIDATES.push(name);
+        cache[name] = {
+          id: playlistId,
+          label: name,
+          image,
+          loadedAt: Date.now(),
+          total: tracks.length,
+          tracks,
+          local: true
+        };
+        writeCache();
+        if (activeToken) {
+          const wixRes = await fetch(LOCAL_PLAYLISTS_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              accessToken: activeToken,
+              playlistId,
+              label: name,
+              image,
+              tracks
+            })
+          });
+          if (!wixRes.ok) throw new Error("ERROR wix save " + wixRes.status);
+          const wixJson = await wixRes.json().catch(() => ({}));
+          if (wixJson.error) throw new Error("ERROR wix save " + wixJson.error);
+        }
+        localStorage.setItem(SOURCE_KEY, name);
+        renderSourceGrid();
+        renderTracks();
+        overlay.remove();
+        setFeedback("created " + name, false);
+        return;
+      }
       const plRes = await fetch("https://api.spotify.com/v1/me/playlists", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ name, public: false, description: "Pasted track links" })
+        body: JSON.stringify({ name: baseName, public: false, description: "Pasted track links" })
       });
       if (!plRes.ok) throw new Error("ERROR create " + plRes.status);
       const pl = await plRes.json();
@@ -3718,16 +3826,16 @@ async function openManualPlaylist(token) {
         });
         if (!addRes.ok) throw new Error("ERROR add " + addRes.status);
       }
-      PLAYLISTS[name] = { id: pl.id, label: name, image: null };
-      SOURCE_CANDIDATES.push(name);
-      await loadPlaylist(name, token);
-      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
+      PLAYLISTS[baseName] = { id: pl.id, label: baseName, image: null };
+      SOURCE_CANDIDATES.push(baseName);
+      await loadPlaylist(baseName, token);
+      try { await syncPlaylistToWix(baseName, token); } catch (_) {}
       clearPlaylistsCache();
-      localStorage.setItem(SOURCE_KEY, name);
+      localStorage.setItem(SOURCE_KEY, baseName);
       renderSourceGrid();
       renderTracks();
       overlay.remove();
-      setFeedback("created " + name, false);
+      setFeedback("created " + baseName, false);
     } catch (err) {
       create.disabled = false;
       create.textContent = "Create";
@@ -4604,7 +4712,7 @@ function buildPlayer() {
   toggle.type = "button";
   toggle.className = "np-toggle";
   toggle.innerHTML = '<i class="fa-solid fa-play"></i>';
-toggle.addEventListener("click", async () => {
+  toggle.addEventListener("click", async () => {
     if (OFFLINE) {
       if (!currentTrack) {
         const tracks = (cache[sourceName()] && cache[sourceName()].tracks) || [];
@@ -4722,43 +4830,27 @@ toggle.addEventListener("click", async () => {
   previewBtn.innerHTML = '<i class="fa-solid fa-stopwatch"></i>';
   previewBtn.title = "Preview";
 
+  const previewBadge = document.createElement("span");
+  previewBadge.className = "np-preview-badge";
+  previewBadge.setAttribute("role", "button");
+  previewBadge.title = "Preview settings";
+  previewBadge.innerHTML = '<i class="fa-solid fa-gear"></i>';
+
+  previewBadge.addEventListener("pointerdown", ev => {
+    ev.stopPropagation();
+  });
+  previewBadge.addEventListener("pointerup", ev => {
+    ev.stopPropagation();
+  });
+  previewBadge.addEventListener("click", ev => {
+    ev.stopPropagation();
+    showPreviewSettings();
+  });
+  previewBtn.appendChild(previewBadge);
+
   let previewClickTimer = null;
 
-  previewBtn.addEventListener("pointerdown", () => {
-    previewLongPressed = false;
-    clearTimeout(previewHoldTimer);
-    previewHoldTimer = setTimeout(() => {
-      previewHoldTimer = null;
-      previewLongPressed = true;
-      if (navigator.vibrate) navigator.vibrate(30);
-      showPreviewSettings();
-    }, 500);
-  });
-
-  previewBtn.addEventListener("pointerup", () => {
-    if (previewHoldTimer) {
-      clearTimeout(previewHoldTimer);
-      previewHoldTimer = null;
-    }
-    if (previewLongPressed) {
-      previewLongPressed = false;
-      return;
-    }
-    clearTimeout(previewClickTimer);
-    previewClickTimer = setTimeout(() => {
-      togglePreviewMode();
-    }, 250);
-  });
-
-  previewBtn.addEventListener("pointercancel", () => {
-    clearTimeout(previewHoldTimer);
-    previewHoldTimer = null;
-    previewLongPressed = false;
-    clearTimeout(previewClickTimer);
-  });
-
-  previewBtn.addEventListener("dblclick", ev => {
-    ev.stopPropagation();
+  const triggerPreviewWithSettings = () => {
     clearTimeout(previewClickTimer);
     if (previewHoldTimer) {
       clearTimeout(previewHoldTimer);
@@ -4769,11 +4861,28 @@ toggle.addEventListener("click", async () => {
     if (!previewMode) {
       togglePreviewMode();
     }
+  };
+
+  previewBtn.addEventListener("pointerdown", ev => {
+    if (ev.target.closest(".np-preview-badge")) return;
   });
+
+  previewBtn.addEventListener("pointerup", ev => {
+    if (ev.target.closest(".np-preview-badge")) return;
+    clearTimeout(previewClickTimer);
+    previewClickTimer = setTimeout(() => {
+      togglePreviewMode();
+    }, 200);
+  });
+
+  previewBtn.addEventListener("pointercancel", () => {
+    clearTimeout(previewClickTimer);
+  });
+
 
   previewBtn.addEventListener("contextmenu", ev => ev.preventDefault());
 
-const filterBtn = document.createElement("button");
+  const filterBtn = document.createElement("button");
   filterBtn.type = "button";
   filterBtn.className = "np-shuffle";
 
@@ -4811,7 +4920,7 @@ const filterBtn = document.createElement("button");
   });
 
   center.appendChild(controls);
-    const seeks = document.createElement("div");
+  const seeks = document.createElement("div");
   seeks.className = "np-seeks";
 
   const back10 = document.createElement("button");
@@ -4830,13 +4939,13 @@ const filterBtn = document.createElement("button");
     }
   };
   for (const [part] of presets) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "np-preset";
-      b.dataset.preset = part;
-      b.textContent = "";
-      presetBtns[part] = b;
-      b.addEventListener("click", () => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "np-preset";
+    b.dataset.preset = part;
+    b.textContent = "";
+    presetBtns[part] = b;
+    b.addEventListener("click", () => {
       if (OFFLINE) {
         presetTracking = false;
         lastPaintedPreset = null;
@@ -4847,8 +4956,8 @@ const filterBtn = document.createElement("button");
       lastPaintedPreset = null;
       seekCurrent(part);
     });
-      presetPill.appendChild(b);
-    }
+    presetPill.appendChild(b);
+  }
   paintPresets(null);
 
   const fwd10 = document.createElement("button");
@@ -4859,7 +4968,7 @@ const filterBtn = document.createElement("button");
 
   seeks.append(back10, presetPill, fwd10);
   paintPresets(null);
-    const rnd = document.createElement("button");
+  const rnd = document.createElement("button");
   rnd.type = "button";
   rnd.className = "np-shuffle";
   const paintRnd = () => {
@@ -4873,7 +4982,7 @@ const filterBtn = document.createElement("button");
     if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
     paintRnd();
   });
- controls.append(prev, toggle, filterBtn, rnd, queueBtn, previewBtn, volumeBtn, next);
+  controls.append(prev, toggle, filterBtn, rnd, queueBtn, previewBtn, volumeBtn, next);
   center.appendChild(seeks);
   const volume = document.createElement("div");
   volume.className = "np-volume";
@@ -5429,6 +5538,7 @@ async function renderToolsGrid() {
   grid.style.display = toolsCollapsed ? "none" : "grid";
   if (toolsCollapsed) return;
   for (const t of TOOLS) {
+    if (t.id === "localplaylist") continue;
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "tool-tile";
@@ -5453,18 +5563,6 @@ async function renderToolsGrid() {
         paintTile();
         paintToolsBadge();
         setFeedback(hierarchyOn() ? "cascade ON" : "cascade OFF", false);
-      });
-      grid.appendChild(btn);
-      continue;
-    }
-    if (t.id === "localplaylist") {
-      btn.addEventListener("click", async () => {
-        try {
-          const token = await getToken();
-          await openLocalPlaylistTool(token);
-        } catch (err) {
-          setFeedback(err.message, true);
-        }
       });
       grid.appendChild(btn);
       continue;
