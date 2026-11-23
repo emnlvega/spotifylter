@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.24c"
+const VERSION_NUMBER = "v1.25"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -91,7 +91,7 @@ let playAll = localStorage.getItem("sp_play_all") === "1";
 let reverseOrder = localStorage.getItem("sp_reverse") === "1";
 let songFilter = "";
 let songSort = "default";
-let songHiddenFilter = "unfiltered";
+let songHiddenFilter = "unhidden";
 let filterQueue = localStorage.getItem("sp_filter_queue") === "1";
 let recentPanel = null;
 let movingTile = null;
@@ -190,6 +190,26 @@ function circularHueDistance(a, b) {
   return diff > 180 ? 360 - diff : diff;
 }
 
+function syncArtAuraPlaying(isPlaying) {
+  const wrap = document.querySelector("#player-view .np-art-wrap");
+  if (!wrap) return;
+  wrap.classList.toggle("playing", Boolean(isPlaying));
+}
+
+function refreshArtAuraColors() {
+  const wrap = document.querySelector("#player-view .np-art-wrap");
+  if (!wrap) return;
+  const styles = getComputedStyle(document.documentElement);
+  const accent = styles.getPropertyValue("--accent").trim() || "rgb(29, 185, 84)";
+  const action = styles.getPropertyValue("--action").trim() || "rgb(26, 145, 67)";
+  const scndry1 = styles.getPropertyValue("--scndry1").trim() || "rgb(155, 165, 175)";
+  const scndry2 = styles.getPropertyValue("--scndry2").trim() || "rgb(110, 120, 130)";
+  wrap.style.setProperty("--aura-c0", accent);
+  wrap.style.setProperty("--aura-c1", scndry1);
+  wrap.style.setProperty("--aura-c2", action);
+  wrap.style.setProperty("--aura-c3", scndry2);
+}
+
 function applySecondaryHue(h, s = 0.73) {
   const root = document.documentElement;
   const sat = Math.max(0, s);
@@ -199,6 +219,7 @@ function applySecondaryHue(h, s = 0.73) {
     root.style.setProperty("--scndry2", hslToRgb(0, 0, 0.50));
     root.style.setProperty("--scndry3", hslToRgb(0, 0, 0.30));
     root.style.setProperty("--scndry4", hslToRgb(0, 0, 0.14));
+    refreshArtAuraColors();
     return;
   }
 
@@ -206,6 +227,7 @@ function applySecondaryHue(h, s = 0.73) {
   root.style.setProperty("--scndry2", hslToRgb(h, sat * 0.90, 0.38));
   root.style.setProperty("--scndry3", hslToRgb(h, sat * 0.80, 0.25));
   root.style.setProperty("--scndry4", hslToRgb(h, sat * 0.70, 0.13));
+  refreshArtAuraColors();
 }
 
 function applyAdaptiveColor(track) {
@@ -228,6 +250,7 @@ function applyHue(h, s = 0.73) {
     root.style.setProperty("--blackG", hslToRgb(0, 0, 0.08));
     root.style.setProperty("--line", hslToRgb(0, 0, 0.22));
     root.style.setProperty("--muted", hslToRgb(0, 0, 0.50));
+    refreshArtAuraColors();
     return;
   }
 
@@ -237,6 +260,7 @@ function applyHue(h, s = 0.73) {
   root.style.setProperty("--blackG", hslToRgb(h, sat * 0.65, 0.10));
   root.style.setProperty("--line", hslToRgb(h, sat * 0.4, 0.13));
   root.style.setProperty("--muted", hslToRgb(h, sat * 0.55, 0.48));
+  refreshArtAuraColors();
 }
 
 async function extractHueFromImageUrl(url) {
@@ -1325,6 +1349,7 @@ async function playFromGesture(track, token, positionMs) {
     markGridHasTrack();
     paintVersionsButton();
     applyAdaptiveColor(track);
+    syncArtAuraPlaying(true);
     setFeedback("Playing locally (offline)", false);
     return;
   }
@@ -1349,10 +1374,12 @@ async function playFromGesture(track, token, positionMs) {
   startProgress(lastState);
   const toggleIcon = document.querySelector("#player-view .np-toggle i");
   if (toggleIcon) toggleIcon.className = "fa-solid fa-pause";
+  syncArtAuraPlaying(true);
 
   playTrack(track.uri, token, positionMs).catch(err => {
     pendingTrackUri = null;
     pendingTrackUriAt = 0;
+    syncArtAuraPlaying(false);
     setFeedback(err.message, true);
   });
 }
@@ -2068,16 +2095,23 @@ function renderSourceSelect() {
   el.source.value = SOURCE_CANDIDATES.includes(saved) ? saved : SOURCE_CANDIDATES[0];
 }
 
+function isPlayableTrack(name, track) {
+  if (!track || !track.uri) return false;
+  if (isSpotifyLocalTrack(track.uri)) return false;
+  return playAll || !isHidden(name, track.uri);
+}
+
 let _lastDisplayKey = "";
 let _lastDisplayResult = [];
 
 function displayTracks(name) {
-  const cacheKey = `${name}:${songFilter}:${songHiddenFilter}:${songSort}:${reverseOrder}:${(cache[name]?.tracks || []).length}`;
+  const hiddenList = hiddenMap()[name] || [];
+  const cacheKey = `${name}:${songFilter}:${songHiddenFilter}:${songSort}:${reverseOrder}:${(cache[name]?.tracks || []).length}:${hiddenList.length}`;
   if (cacheKey === _lastDisplayKey) return _lastDisplayResult;
 
   const all = (cache[name] && cache[name].tracks) || [];
   let list = all;
-  
+
   if (songHiddenFilter !== "all") {
     list = list.filter(t => {
       const h = isHidden(name, t.uri);
@@ -2095,7 +2129,7 @@ function displayTracks(name) {
     else if (songSort === "durationAsc") list.sort((a, b) => a.durationMs - b.durationMs);
     else if (songSort === "durationDesc") list.sort((a, b) => b.durationMs - a.durationMs);
   }
-  
+
   _lastDisplayKey = cacheKey;
   _lastDisplayResult = reverseOrder ? [...list].reverse() : list;
   return _lastDisplayResult;
@@ -3146,6 +3180,7 @@ async function onPlayerState(state) {
       pendingTrackUriAt = 0;
       const toggleIcon = document.querySelector("#player-view .np-toggle i");
       if (toggleIcon) toggleIcon.className = state.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
+      syncArtAuraPlaying(!state.paused);
       return;
     } else {
       return;
@@ -3155,6 +3190,7 @@ async function onPlayerState(state) {
     if (sdkTrack && sdkTrack.uri === sdkStaleUri) {
       const toggleIcon = document.querySelector("#player-view .np-toggle i");
       if (toggleIcon) toggleIcon.className = state.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
+      syncArtAuraPlaying(!state.paused);
       return;
     }
     sdkStaleUri = null;
@@ -3211,6 +3247,7 @@ async function onPlayerState(state) {
   }
   const toggleIcon = document.querySelector("#player-view .np-toggle i");
   if (toggleIcon) toggleIcon.className = state.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
+  syncArtAuraPlaying(!state.paused);
   highlightTracks();
   startProgress(state);
   markGridHasTrack();
@@ -3818,7 +3855,7 @@ function setHidden(name, uri, value) {
 
 function playableTracks(name) {
   const all = (cache[name] && cache[name].tracks) || [];
-  return playAll ? all : all.filter(t => !isHidden(name, t.uri));
+  return all.filter(t => isPlayableTrack(name, t));
 }
 
 function resetShuffleQueue(name, exclude) {
@@ -3893,12 +3930,14 @@ async function playAdjacent(dir, hide) {
   if (!allTracks.length || !currentTrack) return;
 
   const original = currentTrack;
-  const shouldHide = dir === 1 && hide !== false && !playAll;
+  const shouldHide = dir === 1 && hide !== false && !playAll && !isSpotifyLocalTrack(original.uri);
 
-  const map = hiddenMap();
-  const hiddenSet = new Set(map[name] || []);
+  if (shouldHide) {
+    setHidden(name, original.uri, true);
+    lastAutoHidden = { playlistName: name, track: original };
+  }
 
-  const activeBefore = playAll ? allTracks : allTracks.filter(t => !hiddenSet.has(t.uri));
+  const activeBefore = allTracks.filter(t => isPlayableTrack(name, t));
   if (!activeBefore.length) {
     currentTrack = original;
     updatePlayerBar(original);
@@ -3910,31 +3949,16 @@ async function playAdjacent(dir, hide) {
   let idx = activeBefore.findIndex(t => sameRecording(t, original));
   if (idx === -1) idx = 0;
 
-  if (shouldHide) {
-    setHidden(name, original.uri, true);
-    lastAutoHidden = { playlistName: name, track: original };
-    hiddenSet.add(original.uri);
-  }
-
-  const activeAfter = playAll ? allTracks : allTracks.filter(t => !hiddenSet.has(t.uri));
-  if (!activeAfter.length) {
-    currentTrack = original;
-    updatePlayerBar(original);
-    renderTracks();
-    setFeedback("ERROR no playable track", true);
-    return;
-  }
-
   let candidate = null;
   for (let step = 1; step <= activeBefore.length; step++) {
     const nextIdx = (idx + dir * step + activeBefore.length * 2) % activeBefore.length;
     const nextTrack = activeBefore[nextIdx];
-    if (playAll || !hiddenSet.has(nextTrack.uri)) {
+    if (nextTrack && isPlayableTrack(name, nextTrack)) {
       candidate = nextTrack;
       break;
     }
   }
-  if (!candidate) candidate = activeAfter[0];
+  if (!candidate) candidate = activeBefore[0];
 
   const token = await getToken();
   try {
@@ -4047,13 +4071,27 @@ async function previewAdvance() {
   const tracks = queueTracks(name);
   if (!tracks.length && !manualQueue.length) return false;
   if (!currentTrack) return false;
-  let idx = tracks.findIndex(t => sameRecording(t, currentTrack));
-  if (idx === -1) idx = 0;
-  if (hideOnSkip && !playAll) {
+  if (hideOnSkip && !playAll && !isSpotifyLocalTrack(currentTrack.uri)) {
     setHidden(name, currentTrack.uri, true);
     lastAutoHidden = { playlistName: name, track: currentTrack };
   }
-  const candidate = manualQueue.length ? manualQueue.shift() : tracks[(idx + 1) % tracks.length];
+  let candidate = null;
+  if (manualQueue.length) {
+    while (manualQueue.length) {
+      const next = manualQueue.shift();
+      if (isPlayableTrack(name, next)) {
+        candidate = next;
+        break;
+      }
+    }
+  }
+  if (!candidate) {
+    const playable = tracks.filter(t => isPlayableTrack(name, t));
+    if (!playable.length) return false;
+    let idx = playable.findIndex(t => sameRecording(t, currentTrack));
+    if (idx === -1) idx = 0;
+    candidate = playable[(idx + 1) % playable.length];
+  }
   if (!candidate) return false;
   try {
     const token = await getToken();
@@ -4175,28 +4213,33 @@ let _trackIndexCache = { name: "", uri: "", index: -1 };
 function queueUpcoming(count) {
   count = count || 8;
   const out = [];
+  const name = sourceName();
+
   for (const t of manualQueue) {
+    if (!isPlayableTrack(name, t)) continue;
     if (!out.some(o => o.uri === t.uri)) out.push(t);
     if (out.length >= count) return out;
   }
-  const name = sourceName();
+
   if (shuffleOn) {
     const tracks = playableTracks(name);
     const byUri = new Map(tracks.map(t => [t.uri, t]));
     for (const uri of shuffleQueue) {
       const t = byUri.get(uri);
-      if (t && !out.some(o => o.uri === t.uri)) out.push(t);
+      if (t && isPlayableTrack(name, t) && !out.some(o => o.uri === t.uri)) out.push(t);
       if (out.length >= count) break;
     }
     return out;
   }
-  const tracks = queueTracks(name);
+
+  const tracks = queueTracks(name).filter(t => isPlayableTrack(name, t));
   if (!tracks.length) return out;
-  
-  let idx = -1;
+
   const curUri = currentTrack ? currentTrack.uri : "";
+  let idx = -1;
   if (_trackIndexCache.name === name && _trackIndexCache.uri === curUri && _trackIndexCache.index !== -1) {
-    idx = _trackIndexCache.index;
+    idx = tracks.findIndex(t => sameRecording(t, currentTrack));
+    if (idx === -1) idx = 0;
   } else {
     idx = currentTrack ? tracks.findIndex(t => sameRecording(t, currentTrack)) : 0;
     if (idx === -1) idx = 0;
@@ -4539,7 +4582,12 @@ function buildPlayer() {
   versionsBtn.style.display = "none";
   versionsBtn.title = "Switch version";
   versionsBtn.addEventListener("click", openVersionsPanel);
-  center.append(el.art, el.title, el.artists, versionsBtn, progressWrap, el.time);
+  const artWrap = document.createElement("div");
+  artWrap.className = "np-art-wrap";
+  el.art.className = "np-art";
+  bindImg(el.art, null);
+  artWrap.appendChild(el.art);
+  center.append(artWrap, el.title, el.artists, versionsBtn, progressWrap, el.time);
   const controls = document.createElement("div");
   controls.className = "np-controls";
   const prev = document.createElement("button");
@@ -4568,6 +4616,7 @@ toggle.addEventListener("click", async () => {
       const toggleIcon = document.querySelector("#player-view .np-toggle i");
       const isPaused = toggleIcon.classList.contains("fa-play");
       toggleIcon.className = isPaused ? "fa-solid fa-pause" : "fa-solid fa-play";
+      syncArtAuraPlaying(isPaused);
       setFeedback(isPaused ? "Playing locally" : "Paused locally", false);
       return;
     }
@@ -4606,6 +4655,17 @@ toggle.addEventListener("click", async () => {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}` }
         });
+        if (lastState) {
+          lastState.position = lastState.paused
+            ? lastState.position
+            : lastState.position + (Date.now() - lastState.timestamp);
+          lastState.timestamp = Date.now();
+          lastState.paused = true;
+          startProgress(lastState);
+        }
+        const toggleIcon = document.querySelector("#player-view .np-toggle i");
+        if (toggleIcon) toggleIcon.className = "fa-solid fa-play";
+        syncArtAuraPlaying(false);
         return;
       }
       if (real && currentTrack) {
@@ -4627,6 +4687,14 @@ toggle.addEventListener("click", async () => {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ device_ids: [deviceId], play: true })
       });
+      if (lastState) {
+        lastState.timestamp = Date.now();
+        lastState.paused = false;
+        startProgress(lastState);
+      }
+      const toggleIcon = document.querySelector("#player-view .np-toggle i");
+      if (toggleIcon) toggleIcon.className = "fa-solid fa-pause";
+      syncArtAuraPlaying(true);
     } catch (err) {
       setFeedback(err.message, true);
     }
@@ -4831,6 +4899,8 @@ const filterBtn = document.createElement("button");
   if (gridParent) gridParent.insertBefore(view, el.grid);
   else document.body.appendChild(view);
   paintRepeatButton();
+  refreshArtAuraColors();
+  syncArtAuraPlaying(false);
 }
 
 function applyPlayerScale(v) {
@@ -5068,6 +5138,171 @@ function buildTargetBar() {
 }
 
 
+async function openDiagnosticsModal() {
+  const old = document.getElementById("diagnostics-modal");
+  if (old) old.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "diagnostics-modal";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(10,13,18,0.82);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;box-sizing:border-box;";
+
+  const box = document.createElement("div");
+  box.style.cssText = "background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);width:min(540px,94vw);max-height:85vh;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;color:var(--text);position:relative;box-sizing:border-box;";
+
+  const head = document.createElement("div");
+  head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+  const title = document.createElement("h3");
+  title.textContent = "Diagnostics & Storage";
+  title.style.cssText = "margin:0;font-size:16px;font-weight:600;";
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "tool-close";
+  closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  closeBtn.addEventListener("click", () => overlay.remove());
+  head.append(title, closeBtn);
+  box.appendChild(head);
+
+  const stats = apiStats();
+  const holdMs = apiHoldUntil() - Date.now();
+  const cacheKeys = Object.keys(cache || {});
+  const totalCachedTracks = cacheKeys.reduce((sum, k) => sum + ((cache[k] && cache[k].tracks && cache[k].tracks.length) || 0), 0);
+  const localRaw = localStorage.getItem(CACHE_KEY) || "";
+  const localBytes = new Blob([localRaw]).size;
+  const hiddenObj = hiddenMap();
+  const hiddenTotal = Object.values(hiddenObj).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+  const opsCursor = localStorage.getItem(OPS_CURSOR_KEY) || "none";
+
+  const summaryGrid = document.createElement("div");
+  summaryGrid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;font-size:12px;";
+  const metrics = [
+    ["API (15m / 1h / 3h)", `${stats.m15} / ${stats.h1} / ${stats.h3}`],
+    ["API Hold", holdMs > 0 ? `${Math.ceil(holdMs / 1000)}s` : "None"],
+    ["Cached Playlists", `${cacheKeys.length} (${totalCachedTracks} tracks)`],
+    ["LocalStorage Cache", `${(localBytes / 1024).toFixed(1)} KB`],
+    ["Filtered Songs", String(hiddenTotal)],
+    ["Pending / Manual Q", `${pendingQueue.length} / ${manualQueue.length}`]
+  ];
+  for (const [label, val] of metrics) {
+    const cell = document.createElement("div");
+    cell.style.cssText = "background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;";
+    cell.innerHTML = `<div style="color:var(--muted);font-size:11px;"></div><div style="font-weight:600;margin-top:2px;font-family:monospace;"></div>`;
+    cell.children[0].textContent = label;
+    cell.children[1].textContent = val;
+    summaryGrid.appendChild(cell);
+  }
+  box.appendChild(summaryGrid);
+
+  const lsSection = document.createElement("div");
+  lsSection.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+  const lsTitle = document.createElement("div");
+  lsTitle.textContent = "LocalStorage Keys";
+  lsTitle.style.cssText = "font-size:12px;font-weight:600;color:var(--muted);";
+  const lsList = document.createElement("div");
+  lsList.style.cssText = "background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-family:monospace;font-size:11px;max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;";
+  const spKeys = Object.keys(localStorage).filter(k => k.startsWith("sp_") || k === "spotifylter_version").sort();
+  if (!spKeys.length) {
+    lsList.textContent = "No keys found";
+  } else {
+    for (const k of spKeys) {
+      const v = localStorage.getItem(k) || "";
+      const kb = (new Blob([v]).size / 1024).toFixed(2);
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;justify-content:space-between;gap:8px;";
+      row.innerHTML = `<span></span><span style="color:var(--muted);"></span>`;
+      row.children[0].textContent = k;
+      row.children[1].textContent = `${kb} KB`;
+      lsList.appendChild(row);
+    }
+  }
+  const cursorNote = document.createElement("div");
+  cursorNote.textContent = "Ops cursor: " + opsCursor;
+  cursorNote.style.cssText = "font-size:11px;color:var(--muted);font-family:monospace;";
+  lsSection.append(lsTitle, lsList, cursorNote);
+  box.appendChild(lsSection);
+
+  const wixSection = document.createElement("div");
+  wixSection.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+  const wixHead = document.createElement("div");
+  wixHead.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+  const wixTitle = document.createElement("span");
+  wixTitle.textContent = "Wix Storage";
+  wixTitle.style.cssText = "font-size:12px;font-weight:600;color:var(--muted);";
+  const checkWixBtn = document.createElement("button");
+  checkWixBtn.type = "button";
+  checkWixBtn.className = "outline-btn-scndry";
+  checkWixBtn.textContent = "Check Wix";
+  const wixBox = document.createElement("div");
+  wixBox.style.cssText = "background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;white-space:pre-wrap;color:var(--muted);";
+  wixBox.textContent = OFFLINE ? "OFFLINE mode active" : "Click \"Check Wix\" to inspect index & pending items.";
+
+  checkWixBtn.addEventListener("click", async () => {
+    if (OFFLINE) {
+      wixBox.textContent = "OFFLINE mode is ON — disable offline mode to query Wix.";
+      return;
+    }
+    checkWixBtn.disabled = true;
+    wixBox.textContent = "Checking Wix...";
+    try {
+      const token = await getToken();
+      if (!token) {
+        wixBox.textContent = "ERROR no token";
+        return;
+      }
+      const [idxRes, pendRes] = await Promise.all([
+        fetch(PLAYLIST_DATA_INDEX_URL + "?accessToken=" + encodeURIComponent(token)),
+        fetch(PENDING_URL + "?accessToken=" + encodeURIComponent(token))
+      ]);
+      const idxJson = idxRes.ok ? await idxRes.json() : { error: "HTTP " + idxRes.status };
+      const pendJson = pendRes.ok ? await pendRes.json() : { error: "HTTP " + pendRes.status };
+      const indexItems = Array.isArray(idxJson.items) ? idxJson.items : [];
+      const pendingItems = Array.isArray(pendJson.items) ? pendJson.items : [];
+      const lines = [
+        `Index status: ${idxJson.error ? "ERR " + idxJson.error : idxItemsCountText(indexItems.length)}`,
+        ...indexItems.slice(0, 20).map(it => `  - ${it.playlistId} | loadedAt=${it.loadedAt || 0} | snap=${it.snapshotId || "-"}`),
+        `Pending items: ${pendJson.error ? "ERR " + pendJson.error : pendingItems.length}`
+      ];
+      wixBox.textContent = lines.join("\n");
+    } catch (err) {
+      wixBox.textContent = "ERROR " + err.message;
+    } finally {
+      checkWixBtn.disabled = false;
+    }
+  });
+
+  function idxItemsCountText(n) {
+    return `${n} playlists`;
+  }
+
+  wixHead.append(wixTitle, checkWixBtn);
+  wixSection.append(wixHead, wixBox);
+  box.appendChild(wixSection);
+
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:4px;";
+  const clearLogBtn = document.createElement("button");
+  clearLogBtn.type = "button";
+  clearLogBtn.className = "outline-btn-scndry";
+  clearLogBtn.textContent = "Clear API log";
+  clearLogBtn.addEventListener("click", () => {
+    localStorage.removeItem(API_LOG_KEY);
+    paintApiCounter();
+    openDiagnosticsModal();
+  });
+  const doneBtn = document.createElement("button");
+  doneBtn.type = "button";
+  doneBtn.className = "outline-btn";
+  doneBtn.textContent = "Close";
+  doneBtn.addEventListener("click", () => overlay.remove());
+  actions.append(clearLogBtn, doneBtn);
+  box.appendChild(actions);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay) overlay.remove();
+  });
+}
+
 function buildHeader() {
   if (document.getElementById("app-header")) return;
   const header = document.createElement("header");
@@ -5169,6 +5404,7 @@ async function reconcileDevice() {
   el.title.textContent = currentTrack.name;
   el.artists.textContent = currentTrack.artists;
   bindImg(el.art, currentTrack.image);
+  applyAdaptiveColor(currentTrack);
   lastState = {
     paused: api.paused,
     position: api.position,
@@ -5179,6 +5415,7 @@ async function reconcileDevice() {
   startProgress(lastState);
   const toggleIcon = document.querySelector("#player-view .np-toggle i");
   if (toggleIcon) toggleIcon.className = api.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
+  syncArtAuraPlaying(!api.paused);
   highlightTracks();
   markGridHasTrack();
   paintVersionsButton();
@@ -6505,14 +6742,13 @@ const skipToggle = document.createElement("button");
   });
   filterWrap.append(filterInput, filterClear);
 
-  let songHiddenFilter = "unhidden";
-
   const hiddenSelect = document.createElement("select");
   hiddenSelect.className = "songs-filter-select";
   hiddenSelect.append(new Option("All", "all"), new Option("Unfiltered", "unhidden"), new Option("Filtered", "hidden"));
   hiddenSelect.value = songHiddenFilter;
   hiddenSelect.addEventListener("change", () => {
     songHiddenFilter = hiddenSelect.value;
+    _lastDisplayKey = "";
     renderTracks();
   });
 

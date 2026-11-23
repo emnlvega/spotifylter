@@ -377,13 +377,134 @@ select:focus, input:focus, textarea:focus {
   max-width: 480px;
 }
 
+@keyframes ani-player-view-np-art {
+    0% {
+        --c-0: var(--aura-c0);
+        --x-0: 1%;
+        --y-0: 1%;
+        --s-start-0: 10%;
+        --s-end-0: 30%;
+        --b: 3px;
+    }
+
+    25% {
+        --c-0: var(--aura-c1);
+        --x-0: 99%;
+        --y-0: 1%;
+        --s-start-0: 10%;
+        --s-end-0: 30%;
+        --b: 36px;
+    }
+
+    50% {
+        --c-0: var(--aura-c2);
+        --x-0: 99%;
+        --y-0: 99%;
+        --s-start-0: 10%;
+        --s-end-0: 30%;
+        --b: 8px;
+    }
+
+    75% {
+        --c-0: var(--aura-c3);
+        --x-0: 1%;
+        --y-0: 99%;
+        --s-start-0: 10%;
+        --s-end-0: 30%;
+        --b: 8px;
+    }
+
+    100% {
+        --c-0: var(--aura-c0);
+        --x-0: 1%;
+        --y-0: 1%;
+        --s-start-0: 10%;
+        --s-end-0: 30%;
+        --b: 3px;
+    }
+}
+
+@property --c-0 {
+    syntax: '<color>';
+    inherits: false;
+    initial-value: rgb(29, 185, 84);
+}
+
+@property --x-0 {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 1%;
+}
+
+@property --y-0 {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 1%;
+}
+
+@property --s-start-0 {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 10%;
+}
+
+@property --s-end-0 {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 30%;
+}
+
+@property --b {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: 3px;
+}
+
+#player-view .np-art-wrap {
+    position: relative;
+    width: var(--np-art);
+    height: var(--np-art);
+    border-radius: var(--r-lg);
+    isolation: isolate;
+    --aura-c0: var(--accent);
+    --aura-c1: var(--scndry1);
+    --aura-c2: var(--action);
+    --aura-c3: var(--scndry2);
+}
+
+#player-view .np-art-wrap::after {
+    content: "";
+    position: absolute;
+    inset: -9px;
+    z-index: -1;
+    border-radius: inherit;
+    opacity: 0;
+    pointer-events: none;
+    --c-0: var(--aura-c0);
+    --x-0: 1%;
+    --y-0: 1%;
+    background-color: var(--scndry4);
+    background-image: radial-gradient(circle at var(--x-0) var(--y-0), var(--c-0) var(--s-start-0), transparent var(--s-end-0));
+    animation: ani-player-view-np-art 15s linear infinite normal;
+    animation-play-state: paused;
+    filter: blur(var(--b));
+    background-blend-mode: normal;
+    will-change: transform, opacity;
+    contain: paint;
+}
+
+#player-view .np-art-wrap.playing::after {
+    opacity: 1;
+    animation-play-state: running;
+}
+
 #player-view .np-art {
-  width: var(--np-art);
-  height: var(--np-art);
-  object-fit: cover;
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    display: block;
 }
 
 
