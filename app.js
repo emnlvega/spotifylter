@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.27"
+const VERSION_NUMBER = "v1.27b"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -7438,9 +7438,9 @@ const skipToggle = document.createElement("button");
   const trackListWinBtn = document.createElement("button");
   trackListWinBtn.type = "button";
   trackListWinBtn.className = "outline-btn-scndry";
-  trackListWinBtn.innerHTML = '<i class="fa-solid fa-list"></i><span>List</span>';
+  trackListWinBtn.innerHTML = '<i class="fa-solid fa-picture-in-picture"></i><span>Windowed</span>';
   trackListWinBtn.title = "Track list PiP";
-  trackListWinBtn.addEventListener("click", () => toggleTrackListPip(true));
+  trackListWinBtn.addEventListener("click", () => toggleTrackListPip(false));
 
   const reverseBtn = document.createElement("button");
   reverseBtn.type = "button";
