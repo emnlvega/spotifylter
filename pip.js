@@ -9,10 +9,10 @@ const PIP_SHOW_PROGRESS_KEY = "sp_pip_show_progress";
 
 function getPipConfig() {
   const w = parseInt(localStorage.getItem(PIP_WIDTH_KEY) || "600", 10);
-  const h = parseInt(localStorage.getItem(PIP_HEIGHT_KEY) || "215", 10);
+  const h = parseInt(localStorage.getItem(PIP_HEIGHT_KEY) || "140", 10);
   return {
     width: Number.isFinite(w) && w >= 240 ? w : 600,
-    height: Number.isFinite(h) && h >= 120 ? h : 215,
+    height: Number.isFinite(h) && h >= 120 ? h : 140,
     showMeta: localStorage.getItem(PIP_SHOW_META_KEY) !== "0",
     showProgress: localStorage.getItem(PIP_SHOW_PROGRESS_KEY) !== "0"
   };
@@ -110,11 +110,11 @@ function showPipSettings() {
   resetBtn.textContent = "Reset";
   resetBtn.addEventListener("click", () => {
     curWidth = 600;
-    curHeight = 215;
+    curHeight = 140;
     curMeta = true;
     curProgress = true;
     wRow.input.value = "600";
-    hRow.input.value = "215";
+    hRow.input.value = "140";
     savePipConfig({ width: curWidth, height: curHeight, showMeta: curMeta, showProgress: curProgress });
     panel.remove();
     showPipSettings();
@@ -223,6 +223,10 @@ function buildPipProgressRow() {
   progressWrap.append(presetsLayer, progressBar);
 
   progressWrap.addEventListener("click", async e => {
+    if (progressWrap.dataset.presetHit === "1") {
+      delete progressWrap.dataset.presetHit;
+      return;
+    }
     if (!player || !currentTrack) return;
     const rect = progressWrap.getBoundingClientRect();
     const fraction = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
@@ -266,50 +270,84 @@ function syncPipProgress(doc, cfg) {
   }
 
   const splitsEl = doc.getElementById("pip-preset-splits");
-  if (!splitsEl) return;
+  const progressWrap = doc.getElementById("pip-progress-wrap");
+  if (!splitsEl || !progressWrap) return;
 
-  const domPresets = [...document.querySelectorAll("#player-view .np-preset, #player-view [data-preset], .preview-preset")];
-  const rawPresets = typeof PREVIEW_PRESETS !== "undefined" && Array.isArray(PREVIEW_PRESETS)
-    ? PREVIEW_PRESETS
-    : (typeof previewPresets !== "undefined" && Array.isArray(previewPresets) ? previewPresets : domPresets);
+  const presetRanges = [
+    { key: "A", preset: "A", start: 0.0, end: 0.20, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "A") : Math.floor(dur * 0.20) },
+    { key: "A", preset: "B", start: 0.20, end: 0.35, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "B") : Math.floor(dur * 0.20) },
+    { key: "B", preset: "C", start: 0.35, end: 0.50, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "C") : Math.floor(dur * 0.35) },
+    { key: "C", preset: "D", start: 0.50, end: 0.65, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "D") : Math.floor(dur * 0.50) },
+    { key: "D", preset: "E", start: 0.65, end: 0.80, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "E") : Math.floor(dur * 0.65) },
+    { key: "E", preset: "E", start: 0.80, end: 1, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "E") : Math.floor(dur * 0.80) }
+  ];
+  const count = presetRanges.length;
 
-  const count = rawPresets.length;
-  if (!count) {
-    splitsEl.innerHTML = "";
-    return;
-  }
+  const findSplitIdxAt = clientX => {
+    const rect = splitsEl.getBoundingClientRect();
+    if (!rect.width) return -1;
+    let bestIdx = -1;
+    let bestDist = 11;
+    for (let i = 0; i < count - 1; i++) {
+      const boundaryX = rect.left + rect.width * presetRanges[i].end;
+      const dist = Math.abs(clientX - boundaryX);
+      if (dist <= 10 && dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  };
 
   if (splitsEl.children.length !== count) {
     splitsEl.innerHTML = "";
+    splitsEl.style.pointerEvents = "none";
+    splitsEl.style.cursor = "";
     for (let idx = 0; idx < count; idx++) {
       const seg = doc.createElement("span");
       seg.className = "pip-preset-seg";
       seg.dataset.idx = String(idx);
+      seg.style.width = ((presetRanges[idx].end - presetRanges[idx].start) * 100) + "%";
       splitsEl.appendChild(seg);
     }
+    progressWrap.addEventListener("pointermove", ev => {
+      const hitIdx = findSplitIdxAt(ev.clientX);
+      progressWrap.style.cursor = hitIdx >= 0 ? "pointer" : "";
+      for (let i = 0; i < splitsEl.children.length; i++) {
+        splitsEl.children[i].classList.toggle("is-hover", i === hitIdx);
+      }
+    });
+    progressWrap.addEventListener("pointerleave", () => {
+      progressWrap.style.cursor = "";
+      for (let i = 0; i < splitsEl.children.length; i++) {
+        splitsEl.children[i].classList.remove("is-hover");
+      }
+    });
+    progressWrap.addEventListener("click", async ev => {
+      const hitIdx = findSplitIdxAt(ev.clientX);
+      if (hitIdx < 0) return;
+      progressWrap.dataset.presetHit = "1";
+      const item = presetRanges[hitIdx];
+      if (!item) return;
+      const activeDur = Math.max(1, (currentTrack && currentTrack.durationMs) || (lastState && lastState.duration) || dur);
+      const targetMs = typeof previewPosition === "function" ? previewPosition(activeDur, item.preset) : Math.floor(item.start * activeDur);
+      if (typeof presetTracking !== "undefined") presetTracking = true;
+      if (typeof lastPaintedPreset !== "undefined") lastPaintedPreset = null;
+      if (OFFLINE && typeof applyOfflineSimulatedState === "function") {
+        applyOfflineSimulatedState(lastState ? lastState.paused : false, targetMs);
+      } else if (player) {
+        await player.seek(targetMs);
+      }
+      syncPipState();
+    }, { capture: true });
   }
 
-  const segSpan = dur / count;
+  const activePreset = typeof activePresetAt === "function" ? activePresetAt(pos, dur) : "A";
   for (let idx = 0; idx < count; idx++) {
     const seg = splitsEl.children[idx];
     if (!seg) continue;
-    const item = rawPresets[idx];
-    let active = false;
-    if (item && typeof item === "object" && !(item instanceof Element)) {
-      const start = typeof item.startMs === "number" ? item.startMs : (typeof item.start === "number" ? item.start : null);
-      const end = typeof item.endMs === "number" ? item.endMs : (typeof item.end === "number" ? item.end : null);
-      if (start !== null && end !== null) {
-        active = pos >= start && pos <= end;
-      } else if (start !== null) {
-        active = pos >= start && pos < start + segSpan;
-      }
-    }
-    if (!active) {
-      const segStart = idx * segSpan;
-      const segEnd = (idx + 1) * segSpan;
-      active = pos >= segStart && (idx === count - 1 ? pos <= segEnd : pos < segEnd);
-    }
-    seg.classList.toggle("is-active", active);
+    seg.style.width = ((presetRanges[idx].end - presetRanges[idx].start) * 100) + "%";
+    seg.classList.toggle("is-active", presetRanges[idx].key === activePreset);
   }
 }
 

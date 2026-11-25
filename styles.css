@@ -322,10 +322,6 @@ select:focus, input:focus, textarea:focus {
 
 
 
-.songs-toggle.action:hover {
-  background: var(--darkG);
-}
-
 .zoom-group {
   display: inline-flex;
   gap: 4px;
@@ -902,7 +898,7 @@ input[type="range"]::-moz-range-thumb {
 #player-view .np-progress {
   width: 100%;
   height: 6px;
-  background: var(--surface);
+  background: var(--backgroundGrad2);
   border-radius: 3px;
   overflow: hidden;
   cursor: pointer;
@@ -912,6 +908,7 @@ input[type="range"]::-moz-range-thumb {
   width: 0;
   background: var(--white);
   border-radius: 3px;
+  z-index: 4;
   transition: width .1s linear;
 }
 #player-view .np-controls button,
@@ -2691,6 +2688,8 @@ body.auth-mode #auth-box {
   color: var(--white);
 }
 
+/* PIP MODE STYLES */ 
+
 body.pip-body {
   padding: 8px;
   margin: 0;
@@ -2714,8 +2713,8 @@ body.pip-body {
 }
 
 .pip-left {
-  flex: 0 0 116px;
-  width: 116px;
+  flex: 0 0 120px;
+  width: 120px;
   height: 100%;
   display: flex;
   align-items: center;
@@ -2726,16 +2725,16 @@ body.pip-body {
 
 #player-view .pip-art-wrap,
 .pip-art-wrap {
-  width: 100px;
-  height: 100px;
-  border-radius: 22px;
+  width: 80x;
+  height: 80px;
+  border-radius: 5px;
   flex-shrink: 0;
 }
 
 .pip-art-wrap .np-art {
   width: 100%;
   height: 100%;
-  border-radius: 22px;
+  border-radius: 14px;
 }
 
 .pip-meta {
@@ -2800,12 +2799,13 @@ body.pip-body {
 
 #player-view .np-progress.pip-progress #pip-progress-bar {
   position: relative;
-  z-index: 2;
+  z-index: 4;
   height: 6px;
   width: 0;
   background: var(--white);
   border-radius: 3px;
   transition: width .1s linear;
+  pointer-events: none;
 }
 
 #target-grid.pip-target-grid {
@@ -2819,6 +2819,7 @@ body.pip-body {
   gap: 4px;
   overflow-x: hidden;
   overflow-y: auto;
+  scroll-snap-type: y mandatory;
 }
 
 #target-grid.pip-target-grid button {
@@ -2828,6 +2829,7 @@ body.pip-body {
   gap: 2px;
   justify-content: flex-start;
   border-radius: var(--r-sm);
+  scroll-snap-align: start;
 }
 
 #target-grid.pip-target-grid button img {
@@ -2844,9 +2846,9 @@ body.pip-body {
 
 #player-view .pip-title,
 .pip-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  line-height: 1.5;
+  line-height: 1.2;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -2859,9 +2861,10 @@ body.pip-body {
 
 #player-view .pip-artists,
 .pip-artists {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--muted);
   font-weight: bold;
+  line-height: 1.2;
   margin: 0;
   width: 100%;
   max-width: 100%;
@@ -2896,7 +2899,7 @@ body.pip-body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -2946,23 +2949,24 @@ body.pip-body {
 .pip-preset-splits {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   pointer-events: none;
 }
 
 .pip-preset-seg {
-  flex: 1;
   height: 100%;
   border-right: 1px solid var(--accent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pip-preset-seg.is-hover {
+  border-right-width: 3px;
 }
 
 .pip-preset-seg:last-child {
   border-right: none;
-}
-
-.pip-preset-seg.is-active {
-  background: var(--blackG);
 }
 
 
@@ -3007,9 +3011,10 @@ body.pip-body {
 
 .pip-status-line {
   width: 100%;
-  min-height: 12px;
+  margin-top: -5px;
+  min-height: 10px;
   font-size: 9px;
-  line-height: 1.1;
+  line-height: 1;
   color: var(--muted);
   text-align: center;
   white-space: nowrap;
@@ -3023,12 +3028,49 @@ body.pip-body {
 
 .pip-songs-progress {
   width: 100%;
-  font-size: 9px;
-  line-height: 1.1;
-  color: var(--white);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted);
   text-align: center;
-  font-weight: bold;
+  font-weight: 900;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.preset-time-range-highlight {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--blackG);
+}
+
+.fill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--secondaryGrad);
+  padding: 8px 16px;
+  color: var(--white);
+  border: 1px solid var(--scndry1);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  cursor: pointer;
+}
+.fill-btn:hover {
+  border-color: var(--white);
+}
+.fill-btn.on {
+  color: var(--scndry4);
+  background: var(--white);
+  border-color: var(--white);
+}
+.fill-btn.active {
+  color: var(--scndry4);
+  background: var(--white);
+  border-color: var(--white);
 }

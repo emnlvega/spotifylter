@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.26"
+const VERSION_NUMBER = "v1.26b"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -1287,8 +1287,7 @@ function initPlayer(onState) {
           previewRunning,
           currentUri: currentTrack ? currentTrack.uri : null
         });
-        if (previewMode && message && message.includes("The operation is not allowed")) {
-          setFeedback("player " + message + " (waiting for track)", false);
+        if (previewMode && previewRunning && message && message.includes("The operation is not allowed")) {
           return;
         }
         setFeedback("player " + message, true);
@@ -2023,7 +2022,7 @@ function closeToolPanel() {
 }
 
 function setTracksOpen(open) {
-  const songsToggle = document.querySelector(".songs-row .outline-btn");
+  const songsToggle = document.querySelector(".songs-row .fill-btn");
   const songsTools = document.querySelector(".songs-tools");
   const songsFilters = document.querySelector(".songs-filters");
   if (!el.list) return;
@@ -4883,6 +4882,193 @@ function buildPlayer() {
   el.title.className = "np-title";
   el.artists.className = "np-artists";
   progressWrap.classList.add("np-progress");
+  progressWrap.style.position = "relative";
+  progressWrap.style.overflow = "hidden";
+  el.progress.style.position = "relative";
+  el.progress.style.zIndex = "3";
+  let splitsLayer = progressWrap.querySelector(".pip-preset-splits");
+  if (!splitsLayer) {
+    splitsLayer = document.createElement("div");
+    splitsLayer.className = "pip-preset-splits";
+    progressWrap.insertBefore(splitsLayer, el.progress);
+  }
+  splitsLayer.style.position = "absolute";
+  splitsLayer.style.inset = "0";
+  splitsLayer.style.zIndex = "1";
+  splitsLayer.style.pointerEvents = "none";
+  let activeRangeLayer = progressWrap.querySelector(".preset-time-range-highlight");
+  if (!activeRangeLayer) {
+    activeRangeLayer = document.createElement("div");
+    activeRangeLayer.className = "preset-time-range-highlight";
+    progressWrap.insertBefore(activeRangeLayer, splitsLayer);
+  }
+  activeRangeLayer.style.position = "absolute";
+  activeRangeLayer.style.top = "0";
+  activeRangeLayer.style.bottom = "0";
+  activeRangeLayer.style.zIndex = "0";
+  activeRangeLayer.style.pointerEvents = "none";
+  activeRangeLayer.style.display = "none";
+  const getPresetRanges = () => {
+    const dur = Math.max(1, (currentTrack && currentTrack.durationMs) || (lastState && lastState.duration) || 0);
+    return [
+      { key: "A", preset: "A", start: 0.0, end: 0.20, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "A") : Math.floor(dur * 0.20) },
+      { key: "A", preset: "B", start: 0.20, end: 0.35, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "B") : Math.floor(dur * 0.20) },
+      { key: "B", preset: "C", start: 0.35, end: 0.50, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "C") : Math.floor(dur * 0.35) },
+      { key: "C", preset: "D", start: 0.50, end: 0.65, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "D") : Math.floor(dur * 0.50) },
+      { key: "D", preset: "E", start: 0.65, end: 0.80, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "E") : Math.floor(dur * 0.65) },
+      { key: "E", preset: "E", start: 0.80, end: 1, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "E") : Math.floor(dur * 0.80) }
+    ];
+  };
+  const findSplitIdxAt = (clientX, ranges) => {
+    const rect = splitsLayer.getBoundingClientRect();
+    if (!rect.width) return -1;
+    let bestIdx = -1;
+    let bestDist = 11;
+    for (let i = 0; i < ranges.length - 1; i++) {
+      const boundaryX = rect.left + rect.width * ranges[i].end;
+      const dist = Math.abs(clientX - boundaryX);
+      if (dist <= 10 && dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  };
+  const syncMainProgressSplits = () => {
+    const ranges = getPresetRanges();
+    const count = ranges.length;
+    const hasTrack = Boolean(currentTrack);
+    const dur = Math.max(1, (currentTrack && currentTrack.durationMs) || (lastState && lastState.duration) || 0);
+    let pos = 0;
+    if (hasTrack && lastState) {
+      pos = lastState.paused
+        ? lastState.position
+        : lastState.position + (Date.now() - lastState.timestamp);
+      pos = Math.min(dur, Math.max(0, pos));
+    }
+    const ratio = dur > 0 ? pos / dur : 0;
+    if (splitsLayer.children.length !== count) {
+      splitsLayer.innerHTML = "";
+      for (let idx = 0; idx < count; idx++) {
+        const seg = document.createElement("span");
+        seg.className = "pip-preset-seg";
+        seg.dataset.idx = String(idx);
+        seg.style.position = "relative";
+        seg.style.width = ((ranges[idx].end - ranges[idx].start) * 100) + "%";
+        splitsLayer.appendChild(seg);
+      }
+    }
+    const presetOrder = ["A", "B", "C", "D", "E"];
+    const presetPoints = presetOrder
+      .map(p => ({ p, ms: typeof previewPosition === "function" ? previewPosition(dur, p) : null }))
+      .filter(x => typeof x.ms === "number" && Number.isFinite(x.ms))
+      .sort((a, b) => a.ms - b.ms);
+    let matchedStartMs = null;
+    let matchedEndMs = null;
+    if (hasTrack && presetPoints.length) {
+      if (pos < presetPoints[0].ms) {
+        matchedStartMs = 0;
+        matchedEndMs = presetPoints[0].ms;
+      } else {
+        for (let i = 0; i < presetPoints.length; i++) {
+          if (pos >= presetPoints[i].ms) {
+            matchedStartMs = presetPoints[i].ms;
+            matchedEndMs = i + 1 < presetPoints.length ? presetPoints[i + 1].ms : dur;
+          }
+        }
+      }
+    }
+    if (matchedStartMs !== null && matchedEndMs !== null && matchedEndMs > matchedStartMs && dur > 0) {
+      const leftPct = Math.max(0, Math.min(100, (matchedStartMs / dur) * 100));
+      const widthPct = Math.max(0, Math.min(100 - leftPct, ((matchedEndMs - matchedStartMs) / dur) * 100));
+      activeRangeLayer.style.display = "block";
+      activeRangeLayer.style.left = leftPct + "%";
+      activeRangeLayer.style.width = widthPct + "%";
+    } else {
+      activeRangeLayer.style.display = "none";
+      activeRangeLayer.style.left = "0%";
+      activeRangeLayer.style.width = "0%";
+    }
+    for (let idx = 0; idx < count; idx++) {
+      const seg = splitsLayer.children[idx];
+      if (!seg) continue;
+      const r = ranges[idx];
+      seg.style.width = ((r.end - r.start) * 100) + "%";
+      const isSegActive = hasTrack && ratio >= r.start + 1 / Math.max(1, progressWrap.clientWidth) && ratio <= r.end;
+      seg.classList.toggle("is-active", isSegActive);
+      seg.style.zIndex = isSegActive ? "1" : "2";
+    }
+  };
+  if (window._npSplitWatchInterval) {
+    clearInterval(window._npSplitWatchInterval);
+  }
+  window._npSplitWatchInterval = setInterval(() => {
+    if (!document.getElementById("player-view")) {
+      clearInterval(window._npSplitWatchInterval);
+      window._npSplitWatchInterval = null;
+      return;
+    }
+    syncMainProgressSplits();
+  }, 150);
+  if (!progressWrap.dataset.pipBound) {
+    progressWrap.dataset.pipBound = "1";
+    progressWrap.addEventListener("pointermove", ev => {
+      const ranges = getPresetRanges();
+      const hitIdx = findSplitIdxAt(ev.clientX, ranges);
+      progressWrap.style.cursor = hitIdx >= 0 ? "pointer" : "";
+      for (let i = 0; i < splitsLayer.children.length; i++) {
+        splitsLayer.children[i].classList.toggle("is-hover", i === hitIdx);
+      }
+    });
+    progressWrap.addEventListener("pointerleave", () => {
+      progressWrap.style.cursor = "";
+      for (let i = 0; i < splitsLayer.children.length; i++) {
+        splitsLayer.children[i].classList.remove("is-hover");
+      }
+    });
+    progressWrap.addEventListener("click", async ev => {
+      const ranges = getPresetRanges();
+      const hitIdx = findSplitIdxAt(ev.clientX, ranges);
+      if (hitIdx >= 0) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        ev.stopImmediatePropagation();
+        const item = ranges[hitIdx];
+        if (!item) return;
+        const activeDur = Math.max(1, (currentTrack && currentTrack.durationMs) || (lastState && lastState.duration) || 1);
+        const targetMs = typeof previewPosition === "function" ? previewPosition(activeDur, item.preset) : item.seekMs;
+        presetTracking = true;
+        lastPaintedPreset = null;
+        if (lastState) {
+          lastState.position = targetMs;
+          lastState.timestamp = Date.now();
+        }
+        if (OFFLINE && typeof applyOfflineSimulatedState === "function") {
+          paintPresets(item.key);
+          applyOfflineSimulatedState(lastState ? lastState.paused : false, targetMs);
+        } else if (player && currentTrack) {
+          await player.seek(targetMs);
+        }
+        syncMainProgressSplits();
+        if (typeof syncPipState === "function") syncPipState();
+        return;
+      }
+      if (!player || !currentTrack) return;
+      const rect = progressWrap.getBoundingClientRect();
+      const fraction = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+      const duration = currentTrack.durationMs || (lastState && lastState.duration) || 1;
+      const seekMs = Math.floor(fraction * duration);
+      if (lastState) {
+        lastState.position = seekMs;
+        lastState.timestamp = Date.now();
+      }
+      await player.seek(seekMs);
+      syncMainProgressSplits();
+      requestAnimationFrame(syncMainProgressSplits);
+      if (typeof syncPipState === "function") syncPipState();
+    }, true);
+  }
+  syncMainProgressSplits();
   const versionsBtn = document.createElement("button");
   versionsBtn.type = "button";
   versionsBtn.id = "np-versions-btn";
@@ -4943,7 +5129,7 @@ function buildPlayer() {
         const source = await resolvePlaylistData(src, token);
         if (source === "none") {
           await loadPlaylist(src, token);
-          try { await commitPlaylist(src, token); } catch (_) { /* best effort */ }
+          try { await commitPlaylist(src, token); } catch (_) {}
         }
         setStatus("");
         renderTracks();
@@ -5213,6 +5399,84 @@ function buildPlayer() {
   paintRepeatButton();
   refreshArtAuraColors();
   syncArtAuraPlaying(false);
+  if (!document.body.dataset.presetHotkeysBound) {
+    document.body.dataset.presetHotkeysBound = "1";
+    const hotkeyMap = { "1": "A", "2": "B", "3": "C", "4": "D", "5": "E" };
+    document.addEventListener("keydown", async ev => {
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      const tag = ev.target && ev.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ev.target && ev.target.isContentEditable)) return;
+      const key = ev.key.toLowerCase();
+      if (ev.code === "Space" || ev.key === " ") {
+        ev.preventDefault();
+        toggle.click();
+        return;
+      }
+      if (key === "f") {
+        filterBtn.click();
+        return;
+      }
+      if (key === "s") {
+        rnd.click();
+        return;
+      }
+      if (key === "q") {
+        queueBtn.click();
+        return;
+      }
+      if (key === "p") {
+        if (typeof togglePreviewMode === "function") togglePreviewMode();
+        return;
+      }
+      if (ev.key === "ArrowUp" || ev.key === "ArrowDown") {
+        ev.preventDefault();
+        const delta = ev.key === "ArrowUp" ? 0.05 : -0.05;
+        const currentVol = Number(localStorage.getItem("sp_volume") ?? vRange.value ?? 0.8);
+        const nextVol = Math.min(1, Math.max(0, Number((currentVol + delta).toFixed(2))));
+        localStorage.setItem("sp_volume", String(nextVol));
+        vRange.value = String(nextVol);
+        if (player) player.setVolume(nextVol);
+        return;
+      }
+      if (ev.key === "0" || ev.key === "`" || ev.code === "Backquote") {
+        presetTracking = true;
+        lastPaintedPreset = null;
+        if (lastState) {
+          lastState.position = 0;
+          lastState.timestamp = Date.now();
+        }
+        if (OFFLINE && typeof applyOfflineSimulatedState === "function") {
+          paintPresets(null);
+          applyOfflineSimulatedState(lastState ? lastState.paused : false, 0);
+        } else if (player && currentTrack) {
+          await player.seek(0);
+        }
+        syncMainProgressSplits();
+        if (typeof syncPipState === "function") syncPipState();
+        return;
+      }
+      const part = hotkeyMap[ev.key];
+      if (!part) return;
+      presetTracking = true;
+      lastPaintedPreset = null;
+      if (OFFLINE) {
+        paintPresets(part);
+        const dur = Math.max(1, (currentTrack && currentTrack.durationMs) || (lastState && lastState.duration) || 0);
+        const targetMs = typeof previewPosition === "function" ? previewPosition(dur, part) : 0;
+        if (lastState) {
+          lastState.position = targetMs;
+          lastState.timestamp = Date.now();
+        }
+        if (typeof applyOfflineSimulatedState === "function") {
+          applyOfflineSimulatedState(lastState ? lastState.paused : false, targetMs);
+        }
+      } else if (typeof seekCurrent === "function") {
+        seekCurrent(part);
+      }
+      syncMainProgressSplits();
+      if (typeof syncPipState === "function") syncPipState();
+    });
+  }
 }
 
 function applyPlayerScale(v) {
@@ -6985,11 +7249,11 @@ async function boot() {
   buildAuthBox();
   el.redirect.textContent = redirectUri();
   el.clientId.value = getClientId();
-  if (!document.getElementById("fa-css")) {
+if (!document.getElementById("fa-css")) {
     const fa = document.createElement("link");
     fa.id = "fa-css";
     fa.rel = "stylesheet";
-    fa.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css";
+    fa.href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.3.1/css/all.min.css";
     document.head.appendChild(fa);
   }
   el.refresh.style.display = "none";
@@ -6999,7 +7263,7 @@ async function boot() {
 
   const songsToggle = document.createElement("button");
   songsToggle.type = "button";
-  songsToggle.className = "outline-btn";
+  songsToggle.className = "fill-btn";
   songsToggle.innerHTML = '<i class="fa-solid fa-list-ul"></i><span>Songs</span>';
 
 const skipToggle = document.createElement("button");
@@ -7301,11 +7565,11 @@ const skipToggle = document.createElement("button");
   renderToolsGrid();
   paintToolsBadge();
 
-  const pipBtn = document.createElement("button");
+const pipBtn = document.createElement("button");
   pipBtn.type = "button";
   pipBtn.id = "pip-mode-btn";
   pipBtn.className = "outline-btn";
-  pipBtn.innerHTML = '<i class="fa-solid fa-up-right-from-square"></i><span> PiP</span>';
+  pipBtn.innerHTML = '<i class="fa-solid fa-picture-in-picture"></i><span> PiP</span>';
 
   const pipBadge = document.createElement("span");
   pipBadge.className = "pip-config-badge";
