@@ -1946,7 +1946,7 @@ body.auth-mode #auth-box {
 .songs-filter-input {
   flex: 1;
   min-width: 140px;
-
+  
   padding: 6px 10px;
   font-size: 12px;
 }
@@ -2690,6 +2690,10 @@ body.auth-mode #auth-box {
 
 /* PIP MODE STYLES */ 
 
+.pip-preset-seg.is-active {
+  background: transparent;
+}
+
 body.pip-body {
   padding: 8px;
   margin: 0;
@@ -2919,6 +2923,11 @@ body.pip-body {
   cursor: pointer;
 }
 
+#pip-mode-btn.active .pip-config-badge {
+  background: var(--white);
+  color: var(--darkG);
+}
+
 .pip-progress-row {
   width: 100%;
   display: flex;
@@ -3015,7 +3024,7 @@ body.pip-body {
   min-height: 10px;
   font-size: 9px;
   line-height: 1;
-  color: var(--muted);
+  color: var(--scndry1);
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -3030,7 +3039,7 @@ body.pip-body {
   width: 100%;
   font-size: 10px;
   line-height: 1;
-  color: var(--muted);
+  color: var(--scndry1);
   text-align: center;
   font-weight: 900;
   white-space: nowrap;
@@ -3073,4 +3082,38 @@ body.pip-body {
   color: var(--scndry4);
   background: var(--white);
   border-color: var(--white);
+}
+
+/* Filter toggle */
+.stage-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--backgroundGrad2);
+  flex-shrink: 0;
+  min-height: 35px;
+}
+
+.stage-toggle-btn {
+  border: none;
+  border-radius: calc(var(--r-sm));
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: var(--fast);
+}
+
+.stage-toggle-btn:hover {
+  color: var(--scndry1);
+}
+
+.stage-toggle-btn.active {
+  background: var(--secondaryGrad);
+  color: var(--bg);
 }

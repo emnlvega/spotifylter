@@ -9,10 +9,10 @@ const PIP_SHOW_PROGRESS_KEY = "sp_pip_show_progress";
 
 function getPipConfig() {
   const w = parseInt(localStorage.getItem(PIP_WIDTH_KEY) || "600", 10);
-  const h = parseInt(localStorage.getItem(PIP_HEIGHT_KEY) || "140", 10);
+  const h = parseInt(localStorage.getItem(PIP_HEIGHT_KEY) || "180", 10);
   return {
     width: Number.isFinite(w) && w >= 240 ? w : 600,
-    height: Number.isFinite(h) && h >= 120 ? h : 140,
+    height: Number.isFinite(h) && h >= 120 ? h : 180,
     showMeta: localStorage.getItem(PIP_SHOW_META_KEY) !== "0",
     showProgress: localStorage.getItem(PIP_SHOW_PROGRESS_KEY) !== "0"
   };
@@ -23,6 +23,13 @@ function savePipConfig(cfg) {
   localStorage.setItem(PIP_HEIGHT_KEY, String(cfg.height));
   localStorage.setItem(PIP_SHOW_META_KEY, cfg.showMeta ? "1" : "0");
   localStorage.setItem(PIP_SHOW_PROGRESS_KEY, cfg.showProgress ? "1" : "0");
+}
+
+function applyPipWindowSize(win, width, height) {
+  if (!win || win.closed) return;
+  try {
+    win.resizeTo(width, height);
+  } catch (_) {}
 }
 
 function showPipSettings() {
@@ -110,12 +117,15 @@ function showPipSettings() {
   resetBtn.textContent = "Reset";
   resetBtn.addEventListener("click", () => {
     curWidth = 600;
-    curHeight = 140;
+    curHeight = 180;
     curMeta = true;
     curProgress = true;
     wRow.input.value = "600";
-    hRow.input.value = "140";
+    hRow.input.value = "180";
+    localStorage.setItem(PIP_WIDTH_KEY, "600");
+    localStorage.setItem(PIP_HEIGHT_KEY, "180");
     savePipConfig({ width: curWidth, height: curHeight, showMeta: curMeta, showProgress: curProgress });
+    applyPipWindowSize(pipWindow, curWidth, curHeight);
     panel.remove();
     showPipSettings();
     syncPipState();
@@ -131,6 +141,7 @@ function showPipSettings() {
     if (Number.isFinite(w) && w >= 240) curWidth = w;
     if (Number.isFinite(h) && h >= 120) curHeight = h;
     savePipConfig({ width: curWidth, height: curHeight, showMeta: curMeta, showProgress: curProgress });
+    applyPipWindowSize(pipWindow, curWidth, curHeight);
     panel.remove();
     syncPipState();
     setFeedback("PiP settings saved (" + curWidth + "x" + curHeight + ")", false);
@@ -162,6 +173,7 @@ async function togglePipMode() {
       width: cfg.width,
       height: cfg.height
     });
+    applyPipWindowSize(pipWindow, cfg.width, cfg.height);
 
     for (const styleSheet of document.styleSheets) {
       try {
@@ -250,6 +262,7 @@ function syncPipProgress(doc, cfg) {
   row.style.display = cfg.showProgress ? "flex" : "none";
   if (!cfg.showProgress) return;
 
+  const hasTrack = Boolean(currentTrack);
   const dur = Math.max(1, (currentTrack && currentTrack.durationMs) || (lastState && lastState.duration) || 0);
   let pos = 0;
   if (lastState) {
@@ -266,12 +279,33 @@ function syncPipProgress(doc, cfg) {
 
   const pipBar = doc.getElementById("pip-progress-bar");
   if (pipBar) {
+    pipBar.style.position = "relative";
+    pipBar.style.zIndex = "3";
     pipBar.style.width = (pos / dur * 100) + "%";
   }
 
   const splitsEl = doc.getElementById("pip-preset-splits");
   const progressWrap = doc.getElementById("pip-progress-wrap");
   if (!splitsEl || !progressWrap) return;
+
+  progressWrap.style.position = "relative";
+  progressWrap.style.overflow = "hidden";
+  splitsEl.style.position = "absolute";
+  splitsEl.style.inset = "0";
+  splitsEl.style.zIndex = "1";
+  splitsEl.style.pointerEvents = "none";
+
+  let activeRangeLayer = progressWrap.querySelector(".preset-time-range-highlight");
+  if (!activeRangeLayer) {
+    activeRangeLayer = doc.createElement("div");
+    activeRangeLayer.className = "preset-time-range-highlight";
+    progressWrap.insertBefore(activeRangeLayer, splitsEl);
+  }
+  activeRangeLayer.style.position = "absolute";
+  activeRangeLayer.style.top = "0";
+  activeRangeLayer.style.bottom = "0";
+  activeRangeLayer.style.zIndex = "0";
+  activeRangeLayer.style.pointerEvents = "none";
 
   const presetRanges = [
     { key: "A", preset: "A", start: 0.0, end: 0.20, seekMs: typeof previewPosition === "function" ? previewPosition(dur, "A") : Math.floor(dur * 0.20) },
@@ -307,6 +341,7 @@ function syncPipProgress(doc, cfg) {
       const seg = doc.createElement("span");
       seg.className = "pip-preset-seg";
       seg.dataset.idx = String(idx);
+      seg.style.position = "relative";
       seg.style.width = ((presetRanges[idx].end - presetRanges[idx].start) * 100) + "%";
       splitsEl.appendChild(seg);
     }
@@ -333,6 +368,10 @@ function syncPipProgress(doc, cfg) {
       const targetMs = typeof previewPosition === "function" ? previewPosition(activeDur, item.preset) : Math.floor(item.start * activeDur);
       if (typeof presetTracking !== "undefined") presetTracking = true;
       if (typeof lastPaintedPreset !== "undefined") lastPaintedPreset = null;
+      if (lastState) {
+        lastState.position = targetMs;
+        lastState.timestamp = Date.now();
+      }
       if (OFFLINE && typeof applyOfflineSimulatedState === "function") {
         applyOfflineSimulatedState(lastState ? lastState.paused : false, targetMs);
       } else if (player) {
@@ -342,12 +381,686 @@ function syncPipProgress(doc, cfg) {
     }, { capture: true });
   }
 
-  const activePreset = typeof activePresetAt === "function" ? activePresetAt(pos, dur) : "A";
+  const presetOrder = ["A", "B", "C", "D", "E"];
+  const presetPoints = presetOrder
+    .map(p => ({ p, ms: typeof previewPosition === "function" ? previewPosition(dur, p) : null }))
+    .filter(x => typeof x.ms === "number" && Number.isFinite(x.ms))
+    .sort((a, b) => a.ms - b.ms);
+  let matchedStartMs = null;
+  let matchedEndMs = null;
+  if (hasTrack && presetPoints.length) {
+    if (pos < presetPoints[0].ms) {
+      matchedStartMs = 0;
+      matchedEndMs = presetPoints[0].ms;
+    } else {
+      for (let i = 0; i < presetPoints.length; i++) {
+        if (pos >= presetPoints[i].ms) {
+          matchedStartMs = presetPoints[i].ms;
+          matchedEndMs = i + 1 < presetPoints.length ? presetPoints[i + 1].ms : dur;
+        }
+      }
+    }
+  }
+  if (matchedStartMs !== null && matchedEndMs !== null && matchedEndMs > matchedStartMs && dur > 0) {
+    const leftPct = Math.max(0, Math.min(100, (matchedStartMs / dur) * 100));
+    const widthPct = Math.max(0, Math.min(100 - leftPct, ((matchedEndMs - matchedStartMs) / dur) * 100));
+    activeRangeLayer.style.display = "block";
+    activeRangeLayer.style.left = leftPct + "%";
+    activeRangeLayer.style.width = widthPct + "%";
+  } else {
+    activeRangeLayer.style.display = "none";
+    activeRangeLayer.style.left = "0%";
+    activeRangeLayer.style.width = "0%";
+  }
+
   for (let idx = 0; idx < count; idx++) {
     const seg = splitsEl.children[idx];
     if (!seg) continue;
     seg.style.width = ((presetRanges[idx].end - presetRanges[idx].start) * 100) + "%";
-    seg.classList.toggle("is-active", presetRanges[idx].key === activePreset);
+    seg.classList.remove("is-active");
+    seg.style.zIndex = "2";
+  }
+}
+
+let trackListPipWindow = null;
+let trackListPipSyncTimer = null;
+
+function copyStylesToWindow(targetWin) {
+  for (const styleSheet of document.styleSheets) {
+    try {
+      if (styleSheet.href) {
+        const link = targetWin.document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = styleSheet.href;
+        targetWin.document.head.appendChild(link);
+      } else {
+        const cssRules = [...styleSheet.cssRules].map(r => r.cssText).join("\n");
+        const style = targetWin.document.createElement("style");
+        style.textContent = cssRules;
+        targetWin.document.head.appendChild(style);
+      }
+    } catch (_) {}
+  }
+}
+
+function findMatchingMainControl(controlId, fallbackSelector) {
+  if (controlId) {
+    const byId = document.getElementById(controlId);
+    if (byId) return byId;
+  }
+  return fallbackSelector ? document.querySelector(fallbackSelector) : null;
+}
+
+function syncTrackListControls(doc) {
+  const pipSearch = doc.getElementById("pip-track-search");
+  const mainSearch = findMatchingMainControl(null, '.songs-filter-input, input[type="search"], input[id*="search"], input[class*="search"], #track-search, #filter-search');
+  if (pipSearch && mainSearch && doc.activeElement !== pipSearch && pipSearch.value !== mainSearch.value) {
+    pipSearch.value = mainSearch.value;
+  }
+
+  const pipFilterSelect = doc.getElementById("pip-track-filter");
+  const currentFilterVal = typeof songHiddenFilter !== "undefined"
+    ? songHiddenFilter
+    : (pipFilterSelect ? pipFilterSelect.value : "all");
+
+  if (pipFilterSelect && pipFilterSelect.value !== currentFilterVal) {
+    pipFilterSelect.value = currentFilterVal;
+  }
+
+  const stageBtns = doc.querySelectorAll("#pip-track-filter-stages button");
+  for (const btn of stageBtns) {
+    btn.classList.toggle("active", btn.dataset.value === currentFilterVal);
+  }
+}
+
+function buildTrackListToolbar(doc) {
+  const toolbar = doc.createElement("div");
+  toolbar.id = "pip-track-toolbar";
+  toolbar.className = "songs-filters";
+
+  const filterWrap = doc.createElement("div");
+  filterWrap.className = "songs-filter-wrap";
+
+  const searchInput = doc.createElement("input");
+  searchInput.type = "text";
+  searchInput.id = "pip-track-search";
+  searchInput.className = "songs-filter-input";
+  searchInput.placeholder = "Search name or artist";
+
+  const mainSearch = findMatchingMainControl(null, '.songs-filter-input, input[type="search"], input[id*="search"], input[class*="search"], #track-search, #filter-search');
+  if (mainSearch) {
+    searchInput.value = mainSearch.value || "";
+    searchInput.addEventListener("input", () => {
+      mainSearch.value = searchInput.value;
+      mainSearch.dispatchEvent(new Event("input", { bubbles: true }));
+      mainSearch.dispatchEvent(new Event("change", { bubbles: true }));
+      syncTrackListPip();
+    });
+  }
+
+  const filterClear = doc.createElement("button");
+  filterClear.type = "button";
+  filterClear.className = "songs-filter-clear";
+  filterClear.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  filterClear.title = "Clear filter";
+  filterClear.addEventListener("click", () => {
+    searchInput.value = "";
+    if (mainSearch) {
+      mainSearch.value = "";
+      mainSearch.dispatchEvent(new Event("input", { bubbles: true }));
+      mainSearch.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    syncTrackListPip();
+  });
+
+  filterWrap.append(searchInput, filterClear);
+
+  const filterSelect = doc.createElement("select");
+  filterSelect.id = "pip-track-filter";
+  filterSelect.className = "pip-track-filter";
+  filterSelect.style.display = "none";
+  filterSelect.append(
+    new Option("All", "all"),
+    new Option("Unfiltered", "unhidden"),
+    new Option("Filtered", "hidden")
+  );
+  filterSelect.value = typeof songHiddenFilter !== "undefined" ? songHiddenFilter : "all";
+
+  const hiddenStages = [
+    { value: "all", label: "All" },
+    { value: "unhidden", label: "Unfiltered" },
+    { value: "hidden", label: "Filtered" }
+  ];
+
+  const hiddenStageGroup = doc.createElement("div");
+  hiddenStageGroup.id = "pip-track-filter-stages";
+  hiddenStageGroup.className = "stage-toggle-group";
+
+  const hiddenStageBtns = [];
+
+  const paintHiddenStages = val => {
+    for (const btn of hiddenStageBtns) {
+      btn.classList.toggle("active", btn.dataset.value === val);
+    }
+  };
+
+  for (const st of hiddenStages) {
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.className = "stage-toggle-btn";
+    btn.dataset.value = st.value;
+    btn.textContent = st.label;
+    btn.addEventListener("click", () => {
+      filterSelect.value = st.value;
+      if (typeof songHiddenFilter !== "undefined") {
+        songHiddenFilter = st.value;
+      }
+      if (typeof _lastDisplayKey !== "undefined") {
+        _lastDisplayKey = "";
+      }
+      paintHiddenStages(st.value);
+      if (typeof renderTracks === "function") {
+        renderTracks();
+      }
+      syncTrackListPip();
+    });
+    hiddenStageBtns.push(btn);
+    hiddenStageGroup.appendChild(btn);
+  }
+
+  paintHiddenStages(filterSelect.value);
+  toolbar.append(filterWrap, filterSelect, hiddenStageGroup);
+  return toolbar;
+}
+
+function syncTrackListPip() {
+  if (!trackListPipWindow || trackListPipWindow.closed) return;
+  const doc = trackListPipWindow.document;
+  if (!doc.body) return;
+
+  const mainRootStyle = document.documentElement.style;
+  for (let i = 0; i < mainRootStyle.length; i++) {
+    const prop = mainRootStyle[i];
+    if (prop.startsWith("--")) {
+      doc.documentElement.style.setProperty(prop, mainRootStyle.getPropertyValue(prop));
+    }
+  }
+
+  syncTrackListControls(doc);
+
+  const sourceTrackList = document.getElementById("track-list");
+  const pipTrackList = doc.getElementById("track-list");
+  if (!sourceTrackList || !pipTrackList) return;
+
+  const nextHtml = sourceTrackList.innerHTML;
+  const isHovering = Boolean(doc.querySelector("#track-list > *:hover"));
+  const hasPointerDown = Boolean(doc.querySelector("#track-list > *:active"));
+
+  if (!isHovering && !hasPointerDown && pipTrackList.dataset.lastHtml !== nextHtml) {
+    const prevScrollTop = pipTrackList.scrollTop;
+    const scroller = doc.getElementById("pip-track-scroll");
+    const prevScrollerTop = scroller ? scroller.scrollTop : 0;
+    pipTrackList.dataset.lastHtml = nextHtml;
+    pipTrackList.innerHTML = nextHtml;
+    pipTrackList.querySelectorAll(".track-dur").forEach(el => el.remove());
+    pipTrackList.scrollTop = prevScrollTop;
+    if (scroller) scroller.scrollTop = prevScrollerTop;
+  }
+  pipTrackList.className = "np-grid-list";
+
+  const pipSearch = doc.getElementById("pip-track-search");
+  const query = (pipSearch ? pipSearch.value : "").trim().toLowerCase();
+
+  for (const child of pipTrackList.children) {
+    if (!child.classList.contains("track")) {
+      child.classList.add("track");
+    }
+    const textMatch = !query || (child.textContent || "").toLowerCase().includes(query);
+    child.style.display = textMatch ? "" : "none";
+  }
+}
+
+function applyResponsiveTrackListMetrics(win, doc) {
+  if (!win || win.closed || !doc) return;
+  const wrap = doc.querySelector(".pip-track-list-wrap");
+  const scroller = doc.getElementById("pip-track-scroll");
+  const list = doc.getElementById("track-list");
+  if (!wrap || !scroller || !list) return;
+
+  const pad = 6;
+  const gap = 6;
+  const minCol = 72;
+  const cardH = 104;
+  const imgSize = 62;
+  const titlePx = 10;
+  const artistPx = 9;
+
+  wrap.style.padding = pad + "px";
+  wrap.style.gap = gap + "px";
+
+  list.style.setProperty("grid-template-columns", `repeat(auto-fill, minmax(${minCol}px, 1fr))`, "important");
+  list.style.setProperty("gap", gap + "px", "important");
+  scroller.style.setProperty("--pip-card-h", cardH + "px");
+  scroller.style.setProperty("--pip-img-size", imgSize + "px");
+  scroller.style.setProperty("--pip-title-px", titlePx + "px");
+  scroller.style.setProperty("--pip-artist-px", artistPx + "px");
+}
+
+let _lastTrackListPipToggleAt = 0;
+
+async function toggleTrackListPip(forcePip = false) {
+  const now = Date.now();
+  if (now - _lastTrackListPipToggleAt < 350) {
+    return;
+  }
+  _lastTrackListPipToggleAt = now;
+
+  if (trackListPipWindow && !trackListPipWindow.closed) {
+    trackListPipWindow.close();
+    return;
+  }
+  if (!("documentPictureInPicture" in window)) {
+    setFeedback("ERROR Document Picture-in-Picture not supported", true);
+    return;
+  }
+
+  clearInterval(trackListPipSyncTimer);
+  trackListPipSyncTimer = null;
+
+try {
+    const winW = 600;
+    const winH = 350;
+    const hasPip = Boolean(pipWindow && !pipWindow.closed);
+    const pipLeft = hasPip
+      ? (pipWindow.screenLeft ?? pipWindow.screenX ?? window.screenLeft ?? window.screenX ?? 0)
+      : (window.screenLeft ?? window.screenX ?? 0);
+    const pipTop = hasPip
+      ? (pipWindow.screenTop ?? pipWindow.screenY ?? window.screenTop ?? window.screenY ?? 0)
+      : (window.screenTop ?? window.screenY ?? 0);
+    const offsetX = 0;
+    const offsetY = -345;
+    const targetLeft = Math.max(0, Math.round(pipLeft + offsetX));
+    const targetTop = Math.max(0, Math.round(pipTop + offsetY));
+
+    const targetWin = !forcePip && typeof window.open === "function"
+      ? window.open("", "spotifylterTrackList", `popup=yes,width=${winW},height=${winH},left=${targetLeft},top=${targetTop}`)
+      : null;
+
+    if (targetWin) {
+      trackListPipWindow = targetWin;
+      const placeWindow = () => {
+        if (!targetWin || targetWin.closed) return;
+        try {
+          targetWin.moveTo(targetLeft, targetTop);
+          targetWin.resizeTo(winW, winH);
+        } catch (_) {}
+      };
+      placeWindow();
+      setTimeout(placeWindow, 50);
+      setTimeout(placeWindow, 200);
+    } else {
+      trackListPipWindow = await documentPictureInPicture.requestWindow({
+        width: winW,
+        height: winH
+      });
+    }
+
+    const doc = trackListPipWindow.document;
+    doc.open();
+    doc.write("<!DOCTYPE html><html><head><title>Track List</title></head><body></body></html>");
+    doc.close();
+
+    copyStylesToWindow(trackListPipWindow);
+
+    doc.body.className = document.body.className;
+    doc.body.innerHTML = "";
+
+    const pipStyle = doc.createElement("style");
+    pipStyle.textContent = `
+      :root {
+        --bg: #080808;
+        --surface: #070708;
+        --surface-2: #0f1013;
+        --line: rgb(24, 44, 30);
+        --text: #e8ecf2;
+        --muted: rgb(72, 173, 86);
+        --white: #ffffff;
+        --grey: #777c8b;
+        --accent: rgb(29, 185, 84);
+        --action: rgb(26, 145, 67);
+        --darkG: rgb(22, 102, 50);
+        --blackG: rgb(14, 39, 27);
+        --yellow: #d29922;
+        --red: #da3633;
+        --r-sm: 6px;
+        --r-md: 10px;
+        --r-lg: 14px;
+        --np-art: 340px;
+        --fast: .12s ease;
+        --scndry1: rgb(155, 165, 175);
+        --scndry2: rgb(110, 120, 130);
+        --scndry3: rgb(70, 78, 86);
+        --scndry4: rgb(22, 26, 30);
+        --darkGrad: linear-gradient(135deg, var(--surface-2), var(--bg));
+        --darkGrad2: linear-gradient(135deg, var(--bg), var(--surface-2));
+        --primaryGrad: linear-gradient(135deg, var(--accent), var(--action));
+        --secondaryGrad: linear-gradient(135deg, var(--scndry1), var(--scndry2));
+        --backgroundGrad: linear-gradient(90deg, var(--surface), color-mix(in srgb, var(--scndry4) 50%, transparent), var(--surface)),
+          var(--surface);
+        --backgroundGrad2: linear-gradient(90deg, var(--scndry4), color-mix(in srgb, var(--surface) 50%, transparent), var(--scndry4)),
+          var(--surface);
+        --backgroundGrad3: linear-gradient(90deg, var(--darkG), color-mix(in srgb, var(--surface) 50%, transparent), var(--darkG)),
+          var(--surface);
+      }
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--backgroundGrad);
+        color: var(--text);
+      }
+      .pip-track-list-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+        height: 100%;
+        padding: 6px;
+        overflow: hidden;
+        background: var(--backgroundGrad);
+      }
+      .pip-track-list-wrap .songs-filters {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .pip-track-list-wrap .songs-filter-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+      }
+      .pip-track-list-wrap .songs-filter-input {
+        width: 100%;
+        padding: 5px 24px 5px 8px;
+        min-height: 35px;
+        border-radius: var(--r-sm);
+        border: 1px solid var(--line);
+        background: var(--surface-2);
+        color: var(--text);
+        font-size: 11px;
+      }
+      .pip-track-list-wrap .songs-filter-clear {
+        position: absolute;
+        right: 5px;
+        background: none;
+        border: none;
+        color: var(--text);
+        cursor: pointer;
+        padding: 2px 4px;
+        font-size: 11px;
+      }
+      .pip-track-list-wrap .pip-track-filter {
+        padding: 5px 6px;
+        border-radius: var(--r-sm);
+        border: 1px solid var(--line);
+        background: var(--surface-2);
+        color: var(--text);
+        font-size: 11px;
+      }
+      .pip-track-scroll {
+        flex: 1 1 0;
+        min-height: 0;
+        width: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+      .pip-track-scroll .np-grid-list,
+      .pip-track-scroll #track-list {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)) !important;
+        gap: 6px !important;
+        max-height: none !important;
+        overflow: visible !important;
+        align-content: start;
+        width: 100%;
+        padding-bottom: 12px;
+      }
+      .pip-track-scroll .np-grid-list .track,
+      .pip-track-scroll #track-list > * {
+        position: relative;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 4px !important;
+        padding: 5px !important;
+        height: var(--pip-card-h, 110px) !important;
+        border-radius: var(--r-md);
+        background: var(--darkGrad);
+        border: 1px solid var(--surface-2);
+        cursor: pointer;
+        overflow: hidden;
+        min-width: 0;
+        max-width: 100%;
+        width: auto !important;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+      }
+      .pip-track-scroll .np-grid-list .track.current,
+      .pip-track-scroll #track-list > *.current,
+      .pip-track-scroll .np-grid-list .track.active,
+      .pip-track-scroll #track-list > *.active,
+      .pip-track-scroll .np-grid-list .track.is-active,
+      .pip-track-scroll #track-list > *.is-active,
+      .pip-track-scroll .np-grid-list .track[aria-current="true"],
+      .pip-track-scroll #track-list > *[aria-current="true"] {
+        background: var(--primaryGrad);
+        border-color: var(--accent);
+      }
+      .pip-track-scroll .np-grid-list .track:hover,
+      .pip-track-scroll #track-list > *:hover {
+        border-color: var(--accent);
+      }
+      .pip-track-scroll .np-grid-list .track img,
+      .pip-track-scroll #track-list img {
+        width: var(--pip-img-size, 64px) !important;
+        height: var(--pip-img-size, 64px) !important;
+        max-width: none !important;
+        max-height: none !important;
+        flex-shrink: 0;
+        object-fit: cover;
+        border-radius: var(--r-sm);
+        display: block;
+      }
+      .pip-track-scroll .np-grid-list .track p,
+      .pip-track-scroll #track-list p {
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.2;
+      }
+      .pip-track-scroll .np-grid-list .track-name,
+      .pip-track-scroll #track-list .track-name {
+        font-size: var(--pip-title-px, 11px) !important;
+        font-weight: 600;
+      }
+      .pip-track-scroll .np-grid-list .track-artists,
+      .pip-track-scroll #track-list .track-artists {
+        font-size: var(--pip-artist-px, 10px) !important;
+        color: var(--scndry1);
+      }
+      .pip-track-scroll .np-grid-list .recent-empty,
+      .pip-track-scroll #track-list .recent-empty {
+        grid-column: 1 / -1;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        padding: 20px;
+      }
+    `;
+    doc.head.appendChild(pipStyle);
+
+    const wrap = doc.createElement("div");
+    wrap.className = "pip-track-list-wrap";
+
+    const toolbar = buildTrackListToolbar(doc);
+
+    const scroller = doc.createElement("div");
+    scroller.id = "pip-track-scroll";
+    scroller.className = "pip-track-scroll";
+
+    const list = doc.createElement("div");
+    list.id = "track-list";
+    list.className = "np-grid-list";
+
+    list.addEventListener("pointerdown", ev => {
+      if (ev.button !== 0) return;
+      const sourceTrackList = document.getElementById("track-list");
+      if (!sourceTrackList) return;
+      const itemEl = ev.target.closest("[data-uri], [data-index], .track, .track-row, .track-item, button, a");
+      if (!itemEl) return;
+
+      const idx = itemEl.dataset.index;
+      const uri = itemEl.dataset.uri;
+      let targetInMain = null;
+
+      if (idx !== undefined) {
+        targetInMain = sourceTrackList.querySelector(`[data-index="${idx}"]`);
+      }
+      if (!targetInMain && uri) {
+        targetInMain = sourceTrackList.querySelector(`[data-uri="${uri}"]`);
+      }
+      if (!targetInMain && itemEl.parentElement) {
+        const allItems = [...list.children];
+        const pos = allItems.indexOf(itemEl);
+        if (pos >= 0 && sourceTrackList.children[pos]) {
+          targetInMain = sourceTrackList.children[pos];
+        }
+      }
+
+      if (targetInMain) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        targetInMain.click();
+        setTimeout(() => {
+          syncTrackListPip();
+          if (typeof syncPipState === "function") syncPipState();
+        }, 80);
+      }
+    });
+
+    scroller.appendChild(list);
+    wrap.append(toolbar, scroller);
+    doc.body.appendChild(wrap);
+
+    applyResponsiveTrackListMetrics(trackListPipWindow, doc);
+    trackListPipWindow.addEventListener("resize", () => applyResponsiveTrackListMetrics(trackListPipWindow, doc));
+
+    syncTrackListPip();
+    trackListPipSyncTimer = setInterval(() => {
+      applyResponsiveTrackListMetrics(trackListPipWindow, doc);
+      syncTrackListPip();
+    }, 250);
+
+    const onClose = () => {
+      clearInterval(trackListPipSyncTimer);
+      trackListPipSyncTimer = null;
+      trackListPipWindow = null;
+      const btn = pipWindow && !pipWindow.closed ? pipWindow.document.getElementById("pip-track-list-btn") : null;
+      if (btn) btn.classList.remove("active");
+    };
+
+    trackListPipWindow.addEventListener("pagehide", onClose, { once: true });
+    trackListPipWindow.addEventListener("beforeunload", onClose, { once: true });
+
+    const btn = pipWindow && !pipWindow.closed ? pipWindow.document.getElementById("pip-track-list-btn") : null;
+    if (btn) btn.classList.add("active");
+  } catch (err) {
+    trackListPipWindow = null;
+    setFeedback("ERROR Track list PiP: " + err.message, true);
+  }
+}
+
+function scrollTrackListPipToCurrent(doc) {
+  if (!doc || !currentTrack) return;
+  const pipTrackList = doc.getElementById("track-list");
+  if (!pipTrackList) return;
+
+  const targetUri = currentTrack.uri || "";
+  const targetName = (currentTrack.name || "").trim().toLowerCase();
+  let matchEl = null;
+
+  for (const child of pipTrackList.children) {
+    if (child.style.display === "none") continue;
+    if (targetUri && child.dataset && child.dataset.uri === targetUri) {
+      matchEl = child;
+      break;
+    }
+    if (!matchEl && typeof sameRecording === "function" && child.dataset && child.dataset.uri) {
+      if (sameRecording({ uri: child.dataset.uri }, currentTrack)) {
+        matchEl = child;
+        break;
+      }
+    }
+    if (!matchEl && targetName) {
+      const nameEl = child.querySelector(".track-name");
+      if (nameEl && (nameEl.textContent || "").trim().toLowerCase() === targetName) {
+        matchEl = child;
+        break;
+      }
+    }
+  }
+
+  if (matchEl) {
+    matchEl.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+  }
+}
+
+async function openTrackListPipToCurrent() {
+  if (!trackListPipWindow || trackListPipWindow.closed) {
+    await toggleTrackListPip();
+  }
+  if (trackListPipWindow && !trackListPipWindow.closed) {
+    try {
+      trackListPipWindow.focus();
+    } catch (_) {}
+    syncTrackListPip();
+    setTimeout(() => {
+      if (trackListPipWindow && !trackListPipWindow.closed) {
+        try {
+          trackListPipWindow.focus();
+        } catch (_) {}
+        scrollTrackListPipToCurrent(trackListPipWindow.document);
+      }
+    }, 120);
+  }
+}
+
+function bindTrackListCoverTriggers(doc) {
+  const pipArtWrap = doc && doc.querySelector(".pip-art-wrap");
+  if (pipArtWrap && !pipArtWrap.dataset.trackListBound) {
+    pipArtWrap.dataset.trackListBound = "1";
+    pipArtWrap.style.cursor = "pointer";
+    pipArtWrap.addEventListener("click", () => {
+      openTrackListPipToCurrent();
+    });
+  }
+
+  const mainArtWrap = document.querySelector("#player-view .np-art-wrap");
+  if (mainArtWrap && !mainArtWrap.dataset.trackListBound) {
+    mainArtWrap.dataset.trackListBound = "1";
+    mainArtWrap.style.cursor = "pointer";
+    mainArtWrap.addEventListener("click", () => {
+      openTrackListPipToCurrent();
+    });
   }
 }
 
@@ -477,6 +1190,16 @@ function buildPipLayout(doc) {
   volumeBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
   volumeBtn.title = volumeShown ? "Hide volume" : "Show volume";
 
+  const trackListBtn = doc.createElement("button");
+  trackListBtn.type = "button";
+  trackListBtn.id = "pip-track-list-btn";
+  trackListBtn.className = "np-shuffle pip-ctrl-btn" + (trackListPipWindow && !trackListPipWindow.closed ? " active" : "");
+  trackListBtn.innerHTML = '<i class="fa-solid fa-list"></i>';
+  trackListBtn.title = "Track list";
+  trackListBtn.addEventListener("click", () => {
+    toggleTrackListPip();
+  });
+
   const progressRow = buildPipProgressRow();
   const progressWrap = progressRow.querySelector("#pip-progress-wrap");
 
@@ -543,7 +1266,7 @@ function buildPipLayout(doc) {
   volOverlay.append(volMuteBtn, volRange);
   if (progressWrap) progressWrap.appendChild(volOverlay);
 
-  controls.append(prev, toggle, next, shuffleBtn, filterBtn, previewBtn, volumeBtn);
+  controls.append(prev, toggle, next, shuffleBtn, filterBtn, previewBtn, volumeBtn, trackListBtn);
   topSection.append(controls, progressRow);
   syncVolUi();
 
@@ -554,12 +1277,16 @@ function buildPipLayout(doc) {
   right.append(topSection, gridSection);
   root.append(left, right);
   doc.body.appendChild(root);
+
+  bindTrackListCoverTriggers(doc);
 }
 
 function syncPipState() {
   if (!pipWindow || pipWindow.closed) return;
   const doc = pipWindow.document;
   if (!doc.body) return;
+
+  bindTrackListCoverTriggers(doc);
 
   const cfg = getPipConfig();
 
@@ -641,6 +1368,11 @@ function syncPipState() {
     pipPreview.classList.toggle("active", previewMode);
   }
 
+  const pipTrackListBtn = doc.getElementById("pip-track-list-btn");
+  if (pipTrackListBtn) {
+    pipTrackListBtn.classList.toggle("active", Boolean(trackListPipWindow && !trackListPipWindow.closed));
+  }
+
   const pipVolBtn = doc.getElementById("pip-volume-btn");
   const pipVolOverlay = doc.getElementById("pip-volume-overlay");
   const pipProgressWrap = doc.getElementById("pip-progress-wrap");
@@ -666,6 +1398,7 @@ function syncPipState() {
   }
 
   syncPipProgress(doc, cfg);
+  syncTrackListPip();
 
   const gridEl = doc.getElementById("target-grid");
   if (!gridEl) return;

@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.26b"
+const VERSION_NUMBER = "v1.27"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -4860,6 +4860,60 @@ function showPreviewSettings() {
   center.appendChild(panel);
 }
 
+function findMainTrackCardForCurrent() {
+  const listEl = el && el.list ? el.list : document.getElementById("track-list");
+  if (!listEl || !currentTrack) return null;
+
+  const cards = [...listEl.querySelectorAll(".track")];
+  for (const c of cards) {
+    if (c.classList.contains("current")) return c;
+  }
+
+  const targetUri = currentTrack.uri || "";
+  const targetName = (currentTrack.name || "").trim().toLowerCase();
+  const targetArtists = (currentTrack.artists || "").trim().toLowerCase();
+
+  for (const c of cards) {
+    const idx = Number(c.dataset.index);
+    const t = Number.isFinite(idx) && typeof displayTracks === "function"
+      ? displayTracks(sourceName())[idx]
+      : null;
+    if (t && typeof sameRecording === "function" && sameRecording(t, currentTrack)) {
+      return c;
+    }
+    if (targetUri && c.dataset && c.dataset.uri === targetUri) {
+      return c;
+    }
+  }
+
+  for (const c of cards) {
+    const nameEl = c.querySelector(".track-name");
+    const artEl = c.querySelector(".track-artists");
+    const n = (nameEl && nameEl.textContent ? nameEl.textContent : "").trim().toLowerCase();
+    const a = (artEl && artEl.textContent ? artEl.textContent : "").trim().toLowerCase();
+    if (targetName && n === targetName && (!targetArtists || a === targetArtists)) {
+      return c;
+    }
+  }
+
+  return null;
+}
+
+function scrollMainTrackListToCurrent() {
+  if (!currentTrack) return;
+  if (typeof setTracksOpen === "function") {
+    setTracksOpen(true);
+  }
+  const runScroll = () => {
+    const card = findMainTrackCardForCurrent();
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    }
+  };
+  runScroll();
+  setTimeout(runScroll, 120);
+}
+
 function buildPlayer() {
   let progressWrap = el.progress.parentElement;
   if (!progressWrap || progressWrap === el.bar) {
@@ -5081,6 +5135,21 @@ function buildPlayer() {
   artWrap.className = "np-art-wrap";
   el.art.className = "np-art";
   bindImg(el.art, null);
+  artWrap.style.cursor = "pointer";
+  let artClickTimer = null;
+  artWrap.addEventListener("click", () => {
+    clearTimeout(artClickTimer);
+    artClickTimer = setTimeout(() => {
+      scrollMainTrackListToCurrent();
+    }, 200);
+  });
+  artWrap.addEventListener("dblclick", ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    clearTimeout(artClickTimer);
+    artClickTimer = null;
+    toggleTrackListPip(false);
+  });
   artWrap.appendChild(el.art);
   center.append(artWrap, el.title, el.artists, versionsBtn, progressWrap, el.time);
   const controls = document.createElement("div");
@@ -7366,6 +7435,13 @@ const skipToggle = document.createElement("button");
   undoBtn.title = "Undo last hidden song (Ctrl+Z)";
   undoBtn.addEventListener("click", () => undoLastHide());
 
+  const trackListWinBtn = document.createElement("button");
+  trackListWinBtn.type = "button";
+  trackListWinBtn.className = "outline-btn-scndry";
+  trackListWinBtn.innerHTML = '<i class="fa-solid fa-list"></i><span>List</span>';
+  trackListWinBtn.title = "Track list PiP";
+  trackListWinBtn.addEventListener("click", () => toggleTrackListPip(true));
+
   const reverseBtn = document.createElement("button");
   reverseBtn.type = "button";
   reverseBtn.className = "outline-btn-scndry";
@@ -7417,7 +7493,7 @@ const skipToggle = document.createElement("button");
   filterWrap.className = "songs-filter-wrap";
   const filterInput = document.createElement("input");
   filterInput.type = "text";
-  filterInput.placeholder = "Filter name or artist";
+  filterInput.placeholder = "Search name or artist";
   filterInput.className = "songs-filter-input";
   filterInput.value = songFilter;
   let filterTimer = null;
@@ -7442,24 +7518,49 @@ const skipToggle = document.createElement("button");
 
   const hiddenSelect = document.createElement("select");
   hiddenSelect.className = "songs-filter-select";
+  hiddenSelect.style.display = "none";
   hiddenSelect.append(new Option("All", "all"), new Option("Unfiltered", "unhidden"), new Option("Filtered", "hidden"));
   hiddenSelect.value = songHiddenFilter;
-  hiddenSelect.addEventListener("change", () => {
-    songHiddenFilter = hiddenSelect.value;
-    _lastDisplayKey = "";
-    renderTracks();
-  });
+
+  const hiddenStages = [
+    { value: "all", label: "All" },
+    { value: "unhidden", label: "Unfiltered" },
+    { value: "hidden", label: "Filtered" }
+  ];
+  const hiddenStageGroup = document.createElement("div");
+  hiddenStageGroup.className = "stage-toggle-group";
+  const hiddenStageBtns = [];
+  const paintHiddenStages = val => {
+    for (const btn of hiddenStageBtns) {
+      btn.classList.toggle("active", btn.dataset.value === val);
+    }
+  };
+  for (const st of hiddenStages) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "stage-toggle-btn";
+    btn.dataset.value = st.value;
+    btn.textContent = st.label;
+    btn.addEventListener("click", () => {
+      hiddenSelect.value = st.value;
+      songHiddenFilter = st.value;
+      _lastDisplayKey = "";
+      paintHiddenStages(st.value);
+      renderTracks();
+    });
+    hiddenStageBtns.push(btn);
+    hiddenStageGroup.appendChild(btn);
+  }
+  paintHiddenStages(songHiddenFilter);
 
   const sortSelect = document.createElement("select");
   sortSelect.className = "songs-filter-select";
+  sortSelect.style.display = "none";
   for (const [v, label] of [["default", "Playlist order"], ["name", "Name"], ["artist", "Artist"], ["durationAsc", "Shortest"], ["durationDesc", "Longest"]]) {
     sortSelect.append(new Option(label, v));
   }
   sortSelect.value = songSort;
-  sortSelect.addEventListener("change", () => {
-    songSort = sortSelect.value;
-    renderTracks();
-  });
+
 
   const queueToggle = document.createElement("button");
   queueToggle.type = "button";
@@ -7492,9 +7593,9 @@ const skipToggle = document.createElement("button");
     renderTracks();
   });
 
-  songsFilters.append(filterWrap, hiddenSelect, sortSelect, queueToggle, playAllBtn);
+  songsFilters.append(filterWrap, hiddenSelect, hiddenStageGroup, sortSelect, queueToggle, playAllBtn);
 
-  songsTools.append(playSourceBtn, unhideBtn, undoBtn, reverseBtn, spacer, songsZoom);
+  songsTools.append(playSourceBtn, unhideBtn, undoBtn, trackListWinBtn, reverseBtn, spacer, songsZoom);
 
   const songsHeader = document.createElement("div");
   songsHeader.className = "songs-header";
