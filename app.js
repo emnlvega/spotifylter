@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.25b"
+const VERSION_NUMBER = "v1.26"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -709,15 +709,28 @@ async function playFromManualQueue(hide) {
     setHidden(name, original.uri, true);
     lastAutoHidden = { playlistName: name, track: original };
   }
-  const token = await getToken();
+  const token = !OFFLINE ? await getToken() : "";
   while (manualQueue.length) {
     const candidate = manualQueue.shift();
     try {
-      await playFromGesture(candidate, token);
       currentTrack = candidate;
       updatePlayerBar(candidate);
+      await playFromGesture(candidate, token);
       renderTracks();
       highlightTracks();
+      if (previewMode) {
+        previewAbort = true;
+        previewRunning = false;
+        const scheduledUri = candidate.uri;
+        const expectedSeq = _playingChangeSeq;
+        setTimeout(() => {
+          if (!previewMode || previewRunning || _playingChangeSeq !== expectedSeq) return;
+          if (!currentTrack || currentTrack.uri !== scheduledUri) return;
+          previewAbort = false;
+          if (OFFLINE) runOfflinePreview();
+          else runPreviewForCurrent();
+        }, 650);
+      }
       return;
     } catch (err) {
       if (isUnplayable(err)) continue;
@@ -756,13 +769,33 @@ const el = {
   progress: document.getElementById("progress-bar")
 };
 
+let _statusResetTimer = null;
+
 function setStatus(text) {
+  clearTimeout(_statusResetTimer);
   el.status.textContent = text;
+  if (typeof syncPipState === "function") syncPipState();
+  if (text) {
+    _statusResetTimer = setTimeout(() => {
+      el.status.textContent = "";
+      el.status.classList.remove("error");
+      if (typeof syncPipState === "function") syncPipState();
+    }, 5000);
+  }
 }
 
 function setFeedback(text, isError) {
+  clearTimeout(_statusResetTimer);
   el.status.textContent = text || "";
   el.status.classList.toggle("error", Boolean(isError));
+  if (typeof syncPipState === "function") syncPipState();
+  if (text) {
+    _statusResetTimer = setTimeout(() => {
+      el.status.textContent = "";
+      el.status.classList.remove("error");
+      if (typeof syncPipState === "function") syncPipState();
+    }, 5000);
+  }
 }
 
 function formatMs(ms) {
@@ -1248,8 +1281,14 @@ function initPlayer(onState) {
       });
       player.addListener("playback_error", ({ message }) => {
         if (message && message.includes("M_ID")) return;
+        previewLog("sdk-playback-error", {
+          message,
+          previewMode,
+          previewRunning,
+          currentUri: currentTrack ? currentTrack.uri : null
+        });
         if (previewMode && message && message.includes("The operation is not allowed")) {
-          setFeedback("player " + message + " (retrying preview)", true);
+          setFeedback("player " + message + " (waiting for track)", false);
           return;
         }
         setFeedback("player " + message, true);
@@ -1261,7 +1300,7 @@ function initPlayer(onState) {
       player.addListener("not_ready", ({ device_id }) => {
         setStatus("Player disconnected — reconnecting");
         setTimeout(() => {
-          try { player.connect(); } catch (_) { /* ignore */ }
+          try { player.connect(); } catch (_) {}
         }, 1500);
       });
       player.addListener("player_state_changed", onState);
@@ -1348,7 +1387,8 @@ async function playFromGesture(track, token, positionMs) {
     markGridHasTrack();
     paintVersionsButton();
     applyAdaptiveColor(track);
-    syncArtAuraPlaying(true);
+    applyOfflineSimulatedState(false, typeof positionMs === "number" ? positionMs : 0);
+    startOfflineSimLoop();
     setFeedback("Playing locally (offline)", false);
     return;
   }
@@ -2941,6 +2981,7 @@ function renderGrid(gridKey = "target") {
 
   gridEl.classList.toggle("has-moving", Boolean(movingTile));
   if (!isSource) paintTargetBar();
+  if (typeof syncPipState === "function") syncPipState();
 }
 
 async function removeTrack(track, name, token) {
@@ -3151,7 +3192,9 @@ function updatePlayerBar(track) {
   el.time.textContent = "0:00 / " + formatMs(track.durationMs);
   paintVersionsButton();
   resetPresets();
+  if (typeof syncPipState === "function") syncPipState();
 }
+
 function handleEnd() {
   const uri = currentPlayingUri();
   if (!uri || endHandledFor === uri) return;
@@ -3983,7 +4026,7 @@ async function playNextShuffled(hide) {
     setHidden(name, original.uri, true);
     lastAutoHidden = { playlistName: name, track: original };
   }
-  const token = await getToken();
+  const token = !OFFLINE ? await getToken() : "";
   const valid = new Set(tracks.map(t => t.uri));
   shuffleQueue = shuffleQueue.filter(u => valid.has(u));
   const tried = new Set();
@@ -3996,11 +4039,24 @@ async function playNextShuffled(hide) {
     const track = tracks.find(t => t.uri === uri);
     if (!track) continue;
     try {
-      await playFromGesture(track, token);
       currentTrack = track;
       updatePlayerBar(track);
+      await playFromGesture(track, token);
       renderTracks();
       highlightTracks();
+      if (previewMode) {
+        previewAbort = true;
+        previewRunning = false;
+        const scheduledUri = track.uri;
+        const expectedSeq = _playingChangeSeq;
+        setTimeout(() => {
+          if (!previewMode || previewRunning || _playingChangeSeq !== expectedSeq) return;
+          if (!currentTrack || currentTrack.uri !== scheduledUri) return;
+          previewAbort = false;
+          if (OFFLINE) runOfflinePreview();
+          else runPreviewForCurrent();
+        }, 650);
+      }
       return;
     } catch (err) {
       if (isUnplayable(err)) continue;
@@ -4068,22 +4124,25 @@ async function playAdjacent(dir, hide) {
   }
   if (!candidate) candidate = activeBefore[0];
 
-  const token = await getToken();
+  const token = !OFFLINE ? await getToken() : "";
   try {
-    await playFromGesture(candidate, token);
     currentTrack = candidate;
     updatePlayerBar(candidate);
+    await playFromGesture(candidate, token);
     renderTracks();
     highlightTracks();
     if (previewMode) {
       previewAbort = true;
+      previewRunning = false;
       const scheduledUri = candidate.uri;
+      const expectedSeq = _playingChangeSeq;
       setTimeout(() => {
-        if (!previewMode) return;
+        if (!previewMode || previewRunning || _playingChangeSeq !== expectedSeq) return;
         if (!currentTrack || currentTrack.uri !== scheduledUri) return;
         previewAbort = false;
-        runPreviewForCurrent();
-      }, 300);
+        if (OFFLINE) runOfflinePreview();
+        else runPreviewForCurrent();
+      }, 650);
     }
   } catch (err) {
     currentTrack = original;
@@ -4136,9 +4195,55 @@ function cycleRepeat() {
   setFeedback("repeat " + repeatMode, false);
 }
 
+let offlinePreviewTimer = null;
+
+function runOfflinePreview() {
+  clearTimeout(offlinePreviewTimer);
+  offlinePreviewTimer = null;
+  if (!previewMode || !OFFLINE || !currentTrack) return;
+  previewRunning = true;
+  previewAbort = false;
+  presetTracking = true;
+  lastPaintedPreset = null;
+
+  const startedUri = currentTrack.uri;
+  const durationMs = Math.max(1000, currentTrack.durationMs || 180000);
+  const parts = previewPresets.split("").filter(p => "ABCDE".includes(p));
+  if (!parts.length) parts.push("A", "B", "C", "D", "E");
+  const stepMs = Math.max(250, (Number(previewSeconds) || 5) * 1000);
+
+  const stepAt = idx => {
+    if (!previewMode || previewAbort || !OFFLINE || !currentTrack || currentTrack.uri !== startedUri) {
+      previewRunning = false;
+      presetTracking = false;
+      resetPresets();
+      return;
+    }
+    if (idx >= parts.length) {
+      previewRunning = false;
+      presetTracking = false;
+      resetPresets();
+      previewAdvance();
+      return;
+    }
+    const part = parts[idx];
+    const seekTo = Math.min(previewPosition(durationMs, part), Math.max(0, durationMs - 2000));
+    lastPaintedPreset = null;
+    applyOfflineSimulatedState(false, seekTo);
+    paintPresetsFromPosition(seekTo, durationMs);
+    offlinePreviewTimer = setTimeout(() => stepAt(idx + 1), stepMs);
+  };
+
+  stepAt(0);
+}
+
 function stopPreviewMode() {
+  clearTimeout(offlinePreviewTimer);
+  offlinePreviewTimer = null;
+  previewRunning = false;
   previewMode = false;
   previewAbort = true;
+  unmutePreview();
 
   const btn = document.getElementById("np-preview-btn");
   if (btn) btn.classList.remove("active");
@@ -4149,10 +4254,11 @@ function stopPreviewMode() {
   resetPresets();
 }
 
+let _playingChangeSeq = 0;
+
 function changedPlayingNow() {
-  if (previewRunning) return;
-  if (!previewMode) return;
-  stopPreviewMode();
+  _playingChangeSeq++;
+  previewAbort = true;
 }
 
 function togglePreviewMode() {
@@ -4170,7 +4276,11 @@ function togglePreviewMode() {
   if (settings) settings.remove();
 
   setFeedback("preview on · " + previewSeconds + "s · " + previewPresets, false);
-  runPreviewForCurrent();
+  if (OFFLINE) {
+    runOfflinePreview();
+  } else {
+    runPreviewForCurrent();
+  }
 }
 
 
@@ -4202,7 +4312,8 @@ async function previewAdvance() {
   }
   if (!candidate) return false;
   try {
-    const token = await getToken();
+    const token = !OFFLINE ? await getToken() : "";
+    changedPlayingNow();
     previewRunning = false;
     previewAbort = false;
     currentTrack = candidate;
@@ -4210,11 +4321,11 @@ async function previewAdvance() {
     await playFromGesture(candidate, token);
     renderTracks();
     highlightTracks();
-    const scheduledUri = candidate.uri;
+    const expectedSeq = _playingChangeSeq;
     setTimeout(() => {
-      if (!previewMode || previewRunning) return;
-      if (!currentTrack || currentTrack.uri !== scheduledUri) return;
-      runPreviewForCurrent();
+      if (!previewMode || previewRunning || _playingChangeSeq !== expectedSeq) return;
+      if (OFFLINE) runOfflinePreview();
+      else runPreviewForCurrent();
     }, 600);
     return true;
   } catch (err) {
@@ -4274,44 +4385,119 @@ async function previewWaitUntil(targetMs, durationMs) {
   }
 }
 
+let _previewMuteTimer = null;
+let _savedPreviewVol = null;
+let _isPreviewMuted = false;
+
+function previewLog(eventName, detail) {
+  const ts = new Date().toISOString().slice(11, 23);
+  console.log(`[preview ${ts}] ${eventName}`, detail || {});
+}
+
+async function mutePreview() {
+  if (_isPreviewMuted || !player) return;
+  try {
+    const v = await player.getVolume();
+    _savedPreviewVol = typeof v === "number" && !Number.isNaN(v) ? v : Number(localStorage.getItem("sp_volume") || 0.8);
+    _isPreviewMuted = true;
+    await player.setVolume(0);
+    //previewLog("muted", { savedVol: _savedPreviewVol });
+    clearTimeout(_previewMuteTimer);
+    _previewMuteTimer = setTimeout(() => {
+      previewLog("mute-safety-timeout");
+      unmutePreview();
+    }, 3000);
+  } catch (err) {
+    _isPreviewMuted = false;
+    _savedPreviewVol = null;
+    previewLog("mute-error", { err: err && err.message ? err.message : String(err) });
+  }
+}
+
+async function unmutePreview() {
+  clearTimeout(_previewMuteTimer);
+  _previewMuteTimer = null;
+  if (!_isPreviewMuted) return;
+  const vol = _savedPreviewVol;
+  _isPreviewMuted = false;
+  _savedPreviewVol = null;
+  if (player && typeof vol === "number" && !Number.isNaN(vol)) {
+    try {
+      await player.setVolume(vol);
+      //previewLog("unmuted", { restoredVol: vol });
+    } catch (err) {
+      previewLog("unmute-error", { err: err && err.message ? err.message : String(err) });
+    }
+  }
+}
+
 async function runPreviewForCurrent() {
   if (!player || !currentTrack || previewRunning || !previewMode) return;
   previewRunning = true;
   previewAbort = false;
   presetTracking = true;
   lastPaintedPreset = null;
-  const startedUri = currentTrack.uri;
-  const durationMs = currentTrack.durationMs || 0;
+
+  const startSeq = _playingChangeSeq;
+  let durationMs = currentTrack.durationMs || 0;
   const parts = previewPresets.split("").filter(p => "ABCDE".includes(p));
   if (!parts.length) parts.push("A", "B", "C", "D", "E");
 
+  const active = () =>
+    previewMode && !previewAbort && Boolean(currentTrack) && _playingChangeSeq === startSeq;
+
   try {
     for (const part of parts) {
-      if (previewAbort || !previewMode || !currentTrack || currentTrack.uri !== startedUri) break;
+      if (!active()) break;
+      let seeked = false;
+
+      if (durationMs > 2000) {
+        await mutePreview();
+        for (let i = 0; i < 15; i++) {
+          if (!active()) break;
+          try {
+            const s = await player.getCurrentState();
+            const rawSeek = previewPosition(durationMs, part);
+            const seekTo = Math.min(rawSeek, durationMs - 2000);
+            if (!s || s.paused || !(s.duration > 0)) {
+              await new Promise(r => setTimeout(r, 300));
+              continue;
+            }
+            if (Math.abs(s.position - seekTo) < 1200) {
+              seeked = true;
+              break;
+            }
+            await player.seek(seekTo);
+            await new Promise(r => setTimeout(r, 200));
+            const after = await player.getCurrentState();
+            if (after && !after.paused && Math.abs(after.position - seekTo) < 2500) {
+              seeked = true;
+              break;
+            }
+          } catch (_) {}
+          await new Promise(r => setTimeout(r, 300));
+        }
+        await unmutePreview();
+      }
+
+      if (!active()) break;
       const rawSeek = previewPosition(durationMs, part);
       const seekTo = durationMs > 2000 ? Math.min(rawSeek, durationMs - 2000) : 0;
-      if (durationMs > 2000) {
-        try {
-          const cur = await player.getCurrentState();
-          if (!(cur && Math.abs(cur.position - seekTo) < 1000)) {
-            await player.seek(seekTo);
-          }
-        } catch (_) {
-          continue;
-        }
-      }
-      await new Promise(r => setTimeout(r, 300));
-      const ok = await previewWaitUntil(seekTo + previewSeconds * 1000, durationMs);
-      if (!ok) break;
+      const targetPos = seeked ? seekTo + previewSeconds * 1000 : previewSeconds * 1000;
+      const ok = await previewWaitUntil(targetPos, durationMs);
+      if (!ok) return;
     }
   } finally {
+    await unmutePreview();
     presetTracking = false;
     resetPresets();
-    const wasAborted = previewAbort || !previewMode;
+    const shouldAdvance = previewMode && !previewAbort && Boolean(currentTrack) && _playingChangeSeq === startSeq;
     previewAbort = false;
     previewRunning = false;
-    if (previewMode && !wasAborted && currentTrack && currentTrack.uri === startedUri) {
-      try { await previewAdvance(); } catch (_) {}
+    if (shouldAdvance) {
+      try {
+        await previewAdvance();
+      } catch (_) {}
     }
   }
 }
@@ -4513,16 +4699,31 @@ function paintNpGrid() {
 
     card.append(img, meta, actionBtn);
     card.addEventListener("click", async () => {
-      if (card.dataset.justDragged) return;
+      if (justSelected) return;
       try {
-        changedPlayingNow()
-        const token = await getToken();
-        currentTrack = t;
-        await playFromGesture(t, token);
-        updatePlayerBar(t);
+        const token = !OFFLINE ? await getToken() : "";
+        currentTrack = track;
+        updatePlayerBar(track);
+        changedPlayingNow();
+        previewRunning = false;
+        previewAbort = false;
+        await playFromGesture(track, token);
+        renderTracks();
         highlightTracks();
         markGridHasTrack();
         paintVersionsButton();
+        if (previewMode) {
+          const scheduledUri = track.uri;
+          const expectedSeq = _playingChangeSeq;
+          setTimeout(() => {
+            if (!previewMode || _playingChangeSeq !== expectedSeq) return;
+            if (!currentTrack || currentTrack.uri !== scheduledUri) return;
+            previewRunning = false;
+            previewAbort = false;
+            if (OFFLINE) runOfflinePreview();
+            else runPreviewForCurrent();
+          }, 700);
+        }
       } catch (err) {
         setFeedback(err.message, true);
       }
@@ -4715,17 +4916,19 @@ function buildPlayer() {
   toggle.addEventListener("click", async () => {
     if (OFFLINE) {
       if (!currentTrack) {
-        const tracks = (cache[sourceName()] && cache[sourceName()].tracks) || [];
-        if (tracks.length) {
-          currentTrack = tracks[0];
+        const src = sourceName();
+        const tracks = (cache[src] && cache[src].tracks) || [];
+        const first = tracks.find(t => !isHidden(src, t.uri)) || tracks[0];
+        if (first) {
+          currentTrack = first;
           updatePlayerBar(currentTrack);
+          highlightTracks();
+          markGridHasTrack();
+          paintVersionsButton();
         }
       }
-      const toggleIcon = document.querySelector("#player-view .np-toggle i");
-      const isPaused = toggleIcon.classList.contains("fa-play");
-      toggleIcon.className = isPaused ? "fa-solid fa-pause" : "fa-solid fa-play";
-      syncArtAuraPlaying(isPaused);
-      setFeedback(isPaused ? "Playing locally" : "Paused locally", false);
+      toggleOfflinePlayback();
+      setFeedback(lastState && !lastState.paused ? "Playing locally" : "Paused locally", false);
       return;
     }
     if (!player) return;
@@ -5947,7 +6150,6 @@ async function openSliceTool(token) {
   hint.textContent = "Split a loaded playlist into smaller local parts by track count, entirely offline without calling the Spotify API.";
   panel.append(head, hint);
 
-  // Source playlist select
   const originWrap = document.createElement("label");
   originWrap.className = "tool-label";
   originWrap.textContent = "Playlist to slice";
@@ -5962,7 +6164,6 @@ async function openSliceTool(token) {
   originWrap.appendChild(originSelect);
   panel.appendChild(originWrap);
 
-  // Chunk size input
   const sizeWrap = document.createElement("label");
   sizeWrap.className = "tool-label";
   sizeWrap.textContent = "Tracks per part";
@@ -6003,7 +6204,6 @@ async function openSliceTool(token) {
   actions.append(cancel, create);
   panel.appendChild(actions);
 
-  // ── FIX: Ensure this click listener function is marked as 'async' ──
   create.addEventListener("click", async () => {
     const name = originSelect.value;
     const entry = cache[name];
@@ -6039,7 +6239,6 @@ async function openSliceTool(token) {
         };
 
         if (!OFFLINE && token) {
-          // This await is inside the async click handler
           await fetch(LOCAL_PLAYLISTS_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -6507,6 +6706,140 @@ function buildApiCounter() {
   setInterval(paint, 5000);
   return wrap;
 }
+let offlineSimTimer = null;
+
+function ensureOfflineSimState() {
+  const dur = (currentTrack && currentTrack.durationMs) || (lastState && lastState.duration) || 180000;
+  if (!lastState || typeof lastState !== "object") {
+    lastState = {
+      paused: true,
+      position: 0,
+      duration: dur,
+      timestamp: Date.now(),
+      offlineSim: true
+    };
+  } else {
+    lastState.duration = dur;
+    if (typeof lastState.position !== "number") lastState.position = 0;
+    if (typeof lastState.timestamp !== "number") lastState.timestamp = Date.now();
+    lastState.offlineSim = true;
+  }
+  return lastState;
+}
+
+function getSimulatedPositionMs() {
+  const st = ensureOfflineSimState();
+  const dur = Math.max(1, (currentTrack && currentTrack.durationMs) || st.duration || 1);
+  if (st.paused) {
+    return Math.min(dur, Math.max(0, st.position || 0));
+  }
+  const elapsed = Date.now() - (st.timestamp || Date.now());
+  return Math.min(dur, Math.max(0, (st.position || 0) + elapsed));
+}
+
+function setSimulatedPositionMs(ms) {
+  const st = ensureOfflineSimState();
+  const dur = Math.max(1, (currentTrack && currentTrack.durationMs) || st.duration || 1);
+  st.duration = dur;
+  st.position = Math.min(dur, Math.max(0, Number(ms) || 0));
+  st.timestamp = Date.now();
+  tickOfflineSimulation();
+}
+
+function applyOfflineSimulatedState(nextPaused, posOverride) {
+  const dur = Math.max(1, (currentTrack && currentTrack.durationMs) || (lastState && lastState.duration) || 180000);
+  const pos = typeof posOverride === "number"
+    ? Math.min(dur, Math.max(0, posOverride))
+    : getSimulatedPositionMs();
+  lastState = {
+    paused: Boolean(nextPaused),
+    position: pos,
+    duration: dur,
+    timestamp: Date.now(),
+    offlineSim: true,
+    track_window: {
+      current_track: currentTrack
+        ? {
+            uri: currentTrack.uri,
+            name: currentTrack.name,
+            artists: [{ name: currentTrack.artists || "" }],
+            duration_ms: dur
+          }
+        : null
+    }
+  };
+  const toggleIcon = document.querySelector("#player-view .np-toggle i");
+  if (toggleIcon) toggleIcon.className = lastState.paused ? "fa-solid fa-play" : "fa-solid fa-pause";
+  syncArtAuraPlaying(!lastState.paused);
+  startProgress(lastState);
+  if (typeof syncPipState === "function") syncPipState();
+}
+
+function toggleOfflinePlayback() {
+  const st = ensureOfflineSimState();
+  const dur = Math.max(1, (currentTrack && currentTrack.durationMs) || st.duration || 1);
+  const curPos = getSimulatedPositionMs();
+  if (st.paused) {
+    const startPos = curPos >= dur ? 0 : curPos;
+    applyOfflineSimulatedState(false, startPos);
+    startOfflineSimLoop();
+  } else {
+    applyOfflineSimulatedState(true, curPos);
+  }
+}
+
+function startOfflineSimLoop() {
+  if (offlineSimTimer) return;
+  offlineSimTimer = setInterval(tickOfflineSimulation, 100);
+}
+
+function stopOfflineSimLoop() {
+  if (!offlineSimTimer) return;
+  clearInterval(offlineSimTimer);
+  offlineSimTimer = null;
+}
+
+function tickOfflineSimulation() {
+  if (!lastState || !lastState.offlineSim) return;
+  const dur = Math.max(1, (currentTrack && currentTrack.durationMs) || lastState.duration || 1);
+  lastState.duration = dur;
+  let pos = getSimulatedPositionMs();
+
+  if (!lastState.paused && typeof previewMode !== "undefined" && previewMode) {
+    if (typeof checkOfflinePreviewStep === "function") {
+      checkOfflinePreviewStep(pos, dur);
+    }
+    pos = getSimulatedPositionMs();
+  }
+
+  if (!lastState.paused && pos >= dur) {
+    if (typeof playAdjacent === "function") {
+      setSimulatedPositionMs(0);
+      playAdjacent(1, typeof hideOnSkip !== "undefined" ? hideOnSkip : false);
+      return;
+    }
+    lastState.position = dur;
+    lastState.paused = true;
+    lastState.timestamp = Date.now();
+    pos = dur;
+  }
+
+  const bar = document.getElementById("progress-bar");
+  if (bar) {
+    bar.style.width = (pos / dur * 100) + "%";
+  }
+  if (el && el.time) {
+    const curStr = typeof formatMs === "function" ? formatMs(pos) : "0:00";
+    const totStr = typeof formatMs === "function" ? formatMs(dur) : "0:00";
+    el.time.textContent = curStr + " / " + totStr;
+  }
+  if (typeof updateToggleButton === "function") {
+    updateToggleButton(!lastState.paused);
+  }
+  if (typeof syncPipState === "function") {
+    syncPipState();
+  }
+}
 
 async function startOfflineSession() {
   showApp();
@@ -6607,6 +6940,9 @@ async function startOfflineSession() {
     updatePlayerBar(currentTrack);
     applyAdaptiveColor(currentTrack);
   }
+  ensureOfflineSimState();
+  startOfflineSimLoop();
+  tickOfflineSimulation();
   renderGrid();
   renderSourceGrid();
   renderTracks();
@@ -6965,21 +7301,27 @@ const skipToggle = document.createElement("button");
   renderToolsGrid();
   paintToolsBadge();
 
-  const reloadBtn = document.createElement("button");
-  reloadBtn.type = "button";
-  reloadBtn.className = "outline-btn";
-  reloadBtn.innerHTML = '<i class="fa-solid fa-rotate"></i><span> Reload grid</span>';
-  reloadBtn.addEventListener("click", async () => {
-    reloadBtn.disabled = true;
-    try {
-      await reloadGridPlaylists();
-    } catch (err) {
-      setFeedback(err.message, true);
-    } finally {
-      reloadBtn.disabled = false;
-    }
+  const pipBtn = document.createElement("button");
+  pipBtn.type = "button";
+  pipBtn.id = "pip-mode-btn";
+  pipBtn.className = "outline-btn";
+  pipBtn.innerHTML = '<i class="fa-solid fa-up-right-from-square"></i><span> PiP</span>';
+
+  const pipBadge = document.createElement("span");
+  pipBadge.className = "pip-config-badge";
+  pipBadge.setAttribute("role", "button");
+  pipBadge.title = "PiP settings";
+  pipBadge.innerHTML = '<i class="fa-solid fa-gear"></i>';
+  pipBadge.addEventListener("click", ev => {
+    ev.stopPropagation();
+    if (typeof showPipSettings === "function") showPipSettings();
   });
-  songsRow.appendChild(reloadBtn);
+  pipBtn.appendChild(pipBadge);
+
+  pipBtn.addEventListener("click", () => {
+    if (typeof togglePipMode === "function") togglePipMode();
+  });
+  songsRow.appendChild(pipBtn);
 
   toolbar.remove();
 
@@ -6999,11 +7341,17 @@ const skipToggle = document.createElement("button");
   const bar = el.progress.parentElement || el.progress;
   bar.style.cursor = "pointer";
   bar.addEventListener("click", async e => {
-    if (!player || !currentTrack) return;
+    if (!currentTrack) return;
     const rect = bar.getBoundingClientRect();
     const fraction = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     const duration = currentTrack.durationMs || (lastState && lastState.duration) || 1;
-    await player.seek(Math.floor(fraction * duration));
+    const targetMs = Math.floor(fraction * duration);
+    if (OFFLINE) {
+      applyOfflineSimulatedState(lastState ? lastState.paused : false, targetMs);
+      return;
+    }
+    if (!player) return;
+    await player.seek(targetMs);
   });
   try {
     readCache();
