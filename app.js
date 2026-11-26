@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.27b"
+const VERSION_NUMBER = "v1.28"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -1782,6 +1782,12 @@ function renderSourceGrid() {
     grid.id = "source-grid";
     el.source.parentElement.insertBefore(grid, el.source);
   }
+  const bars = grid.parentElement.querySelectorAll(".sources-bar");
+  const bar = bars[0] || buildSourcesBar();
+  for (let i = 1; i < bars.length; i++) {
+    bars[i].remove();
+  }
+  grid.parentElement.insertBefore(bar, grid);
   el.source.style.display = "none";
   renderGrid("source");
   grid.style.display = sourcesCollapsed ? "none" : "grid";
@@ -2027,13 +2033,42 @@ function setTracksOpen(open) {
   const songsFilters = document.querySelector(".songs-filters");
   if (!el.list) return;
   el.list.style.display = open ? "grid" : "none";
-  if (songsTools) songsTools.style.display = open ? "flex" : "none";
+  el.list.style.marginBottom = "";
+  if (songsTools) {
+    songsTools.style.display = open ? "flex" : "none";
+    songsTools.style.borderTop = open ? "1px solid var(--line)" : "";
+    songsTools.style.paddingTop = open ? "10px" : "";
+  }
   if (songsFilters) songsFilters.style.display = open ? "flex" : "none";
   if (songsToggle) songsToggle.classList.toggle("active", Boolean(open));
 }
 
+let playbackSourceName = localStorage.getItem("sp_playback_source") || "";
+
+function getPlaybackSource() {
+  const current = sourceName();
+  if (!playbackSourceName) {
+    playbackSourceName = current;
+    return playbackSourceName;
+  }
+  const exists = SOURCE_CANDIDATES.includes(playbackSourceName) || Boolean(PLAYLISTS[playbackSourceName]) || Boolean(cache[playbackSourceName]);
+  if (!exists) {
+    playbackSourceName = current;
+  }
+  return playbackSourceName;
+}
+
+function setPlaybackSource(name) {
+  if (!name) return;
+  playbackSourceName = name;
+  localStorage.setItem("sp_playback_source", name);
+}
+
 async function selectSource(name, play) {
-  if (play) changedPlayingNow();
+  if (play) {
+    setPlaybackSource(name);
+    changedPlayingNow();
+  }
   localStorage.setItem(SOURCE_KEY, name);
   setTracksOpen(true);
 
@@ -2048,13 +2083,25 @@ async function selectSource(name, play) {
       tile.classList.toggle("active", tile.dataset.name === name);
     }
   }
+  const ratingEntry = getRatingListEntry(name);
+  if (ratingEntry) {
+    rebuildRatingListsFromCache();
+  }
   const pickFirst = () => {
-    const tracks = (cache[name] && cache[name].tracks) || [];
+    const activeEntry = getRatingListEntry(name) || cache[name];
+    const tracks = (activeEntry && activeEntry.tracks) || [];
     return tracks.find(t => !isHidden(name, t.uri)) || tracks[0];
   };
   const finish = async () => {
+    _lastDisplayKey = "";
     renderTracks();
-    if (play || !currentTrack) {
+    if (play) {
+      const first = pickFirst();
+      if (first) {
+        currentTrack = first;
+        updatePlayerBar(first);
+      }
+    } else if (!currentTrack) {
       const first = pickFirst();
       if (first) {
         currentTrack = first;
@@ -2065,7 +2112,7 @@ async function selectSource(name, play) {
     markGridHasTrack();
     if (play && currentTrack) {
       try {
-        const token = await getToken();
+        const token = !OFFLINE ? await getToken() : "";
         await playFromGesture(currentTrack, token);
         updatePlayerBar(currentTrack);
         highlightTracks();
@@ -2076,10 +2123,21 @@ async function selectSource(name, play) {
     }
   };
 
+  if (OFFLINE || ratingEntry) {
+    await finish();
+    return;
+  }
+
   const entry = PLAYLISTS[name] || cache[name];
   if (entry && entry.local) {
     renderTracks();
-    if (play || !currentTrack) {
+    if (play) {
+      const first = pickFirst();
+      if (first) {
+        currentTrack = first;
+        updatePlayerBar(first);
+      }
+    } else if (!currentTrack) {
       const first = pickFirst();
       if (first) {
         currentTrack = first;
@@ -2142,12 +2200,42 @@ function isPlayableTrack(name, track) {
 let _lastDisplayKey = "";
 let _lastDisplayResult = [];
 
+let ratingDot2Filter = false;
+let ratingDot3Filter = false;
+
+function matchesRatingDotFilter(track) {
+  if (!ratingDot2Filter && !ratingDot3Filter) return true;
+  if (!track || !track.uri) return false;
+  const r = getSongRating(track.uri);
+  if (ratingDot2Filter && ratingDot3Filter) return r === 2 || r === 3;
+  if (ratingDot2Filter) return r === 2;
+  if (ratingDot3Filter) return r === 3;
+  return true;
+}
+
+function getFilteredPlaylistTracks(name) {
+  const cacheEntry = cache && cache[name];
+  const base = (cacheEntry && Array.isArray(cacheEntry.tracks)) ? cacheEntry.tracks : [];
+  if (!ratingDot2Filter && !ratingDot3Filter) return base;
+  return base.filter(t => matchesRatingDotFilter(t));
+}
+
+function syncRatingDotFilterState() {
+  _lastDisplayKey = "";
+  if (shuffleOn) {
+    resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
+  }
+  renderTracks();
+  highlightTracks();
+  refreshNpPanel();
+}
+
 function displayTracks(name) {
   const hiddenList = hiddenMap()[name] || [];
-  const cacheKey = `${name}:${songFilter}:${songHiddenFilter}:${songSort}:${reverseOrder}:${(cache[name]?.tracks || []).length}:${hiddenList.length}`;
+  const all = getTracksForSource(name);
+  const cacheKey = `${name}:${songFilter}:${songHiddenFilter}:${songSort}:${reverseOrder}:${ratingDot2Filter}:${ratingDot3Filter}:${all.length}:${hiddenList.length}`;
   if (cacheKey === _lastDisplayKey) return _lastDisplayResult;
 
-  const all = (cache[name] && cache[name].tracks) || [];
   let list = all;
 
   if (songHiddenFilter !== "all") {
@@ -2184,8 +2272,9 @@ function paintSongsProgress(name) {
 }
 
 function queueTracks(name) {
-  if (filterQueue) return displayTracks(name);
-  const all = (cache[name] && cache[name].tracks) || [];
+  const targetName = name || getPlaybackSource();
+  if (filterQueue) return displayTracks(targetName);
+  const all = getTracksForSource(targetName);
   return reverseOrder ? [...all].reverse() : all;
 }
 
@@ -2194,6 +2283,14 @@ function isSpotifyLocalTrack(trackOrUri) {
     ? trackOrUri
     : (trackOrUri && trackOrUri.uri) || "";
   return uri.startsWith("spotify:local:") || uri.includes("/local/");
+}
+
+function getTracksForSource(name) {
+  const ratingEntry = typeof getRatingListEntry === "function" ? getRatingListEntry(name) : null;
+  if (ratingEntry && Array.isArray(ratingEntry.tracks)) {
+    return ratingEntry.tracks;
+  }
+  return getFilteredPlaylistTracks(name);
 }
 
 function renderTracks() {
@@ -2498,6 +2595,8 @@ function renderTracks() {
     card.addEventListener("click", async () => {
       if (justSelected) return;
       try {
+        setPlaybackSource(name);
+        if (shuffleOn) resetShuffleQueue(name, track.uri);
         changedPlayingNow();
         const token = await getToken();
         currentTrack = track;
@@ -2699,6 +2798,13 @@ function renderGrid(gridKey = "target") {
     const label = document.createElement("span");
     label.textContent = entry.label || name;
     btn.append(img, label);
+
+    if (name === RATING_LIST_2_NAME || name === RATING_LIST_3_NAME) {
+      img.style.display = "none";
+      btn.classList.add("rating-cover-card");
+      btn.classList.add(name === RATING_LIST_2_NAME ? "rating-list-2" : "rating-list-3");
+      btn.style.background = name === RATING_LIST_2_NAME ? "var(--secondaryGrad)" : "var(--primaryGrad)";
+    }
 
     if (isSource && entry.local) {
       const badge = document.createElement("span");
@@ -3190,6 +3296,7 @@ function updatePlayerBar(track) {
   bindImg(el.art, track.image);
   el.time.textContent = "0:00 / " + formatMs(track.durationMs);
   paintVersionsButton();
+  paintRatingPill();
   resetPresets();
   if (typeof syncPipState === "function") syncPipState();
 }
@@ -3338,8 +3445,9 @@ function openVersionsPanel() {
   if (existing) { existing.remove(); return; }
   const versions = versionsOf(currentTrack);
   if (versions.length < 2) return;
-  const center = document.querySelector("#player-view .np-center");
-  if (!center) return;
+  const btn = document.getElementById("np-versions-btn");
+  const container = btn ? btn.parentElement : document.querySelector("#player-view .np-center");
+  if (!container) return;
   const panel = document.createElement("div");
   panel.id = "versions-panel";
   panel.className = "versions-panel";
@@ -3399,7 +3507,15 @@ function openVersionsPanel() {
   close.textContent = "Close";
   close.addEventListener("click", () => closeVersionsPanel());
   panel.appendChild(close);
-  center.appendChild(panel);
+  if (btn) {
+    panel.style.position = "absolute";
+    panel.style.top = "100%";
+    panel.style.left = "50%";
+    panel.style.transform = "translateX(-50%)";
+    panel.style.marginTop = "4px";
+    panel.style.zIndex = "30";
+  }
+  container.appendChild(panel);
 }
 
 function recentList() {
@@ -3588,6 +3704,471 @@ function showAuth(message) {
   setStatus(message || "Log in with your Client ID");
 }
 
+
+
+const RATING_LISTS_KEY = "sp_rating_lists_v1";
+let ratingListsCache = readRatingListsCache();
+
+
+
+function applyRatingGridVisibility() {
+  if (!ratingListsCache || !Object.keys(ratingListsCache).length) {
+    ratingListsCache = readRatingListsCache();
+  }
+  const ratingNames = [RATING_LIST_2_NAME, RATING_LIST_3_NAME];
+  for (const name of ratingNames) {
+    if (ratingOn) {
+      const stored = ratingListsCache[name];
+      if (!PLAYLISTS[name]) {
+        PLAYLISTS[name] = {
+          id: (stored && stored.id) || ("rating_list_" + name),
+          label: name,
+          image: null,
+          local: true,
+          ratingList: true
+        };
+      } else {
+        PLAYLISTS[name].local = true;
+        PLAYLISTS[name].ratingList = true;
+        PLAYLISTS[name].image = null;
+      }
+      if (!SOURCE_CANDIDATES.includes(name)) {
+        SOURCE_CANDIDATES.push(name);
+      }
+    } else {
+      delete PLAYLISTS[name];
+      const idx = SOURCE_CANDIDATES.indexOf(name);
+      if (idx >= 0) SOURCE_CANDIDATES.splice(idx, 1);
+    }
+  }
+  if (!ratingOn) {
+    const cur = typeof sourceName === "function" ? sourceName() : "";
+    if (ratingNames.includes(cur)) {
+      const fallback = SOURCE_CANDIDATES.find(n => !ratingNames.includes(n)) || "";
+      localStorage.setItem("sp_source", fallback);
+      const sourcesLabel = document.getElementById("sources-label");
+      if (sourcesLabel) sourcesLabel.textContent = fallback;
+      if (typeof renderTracks === "function") renderTracks();
+    }
+  }
+  if (typeof renderGrid === "function") renderGrid("target");
+  if (typeof renderSourceGrid === "function") renderSourceGrid();
+  document.querySelectorAll("[data-playlist], [data-source]").forEach(el => {
+    const val = el.dataset.playlist || el.dataset.source || "";
+    if (ratingNames.includes(val)) {
+      ensureRatingCardCoverSlot(el);
+    }
+  });
+}
+
+function readRatingListsCache() {
+  const raw = localStorage.getItem(RATING_LISTS_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeRatingListsCache() {
+  localStorage.setItem(RATING_LISTS_KEY, JSON.stringify(ratingListsCache));
+}
+
+function migrateRatingListsToOwnStorage() {
+  ratingListsCache = readRatingListsCache();
+  let cacheChanged = false;
+  let listsChanged = false;
+
+  for (const name of [RATING_LIST_2_NAME, RATING_LIST_3_NAME]) {
+    if (cache[name]) {
+      if (!ratingListsCache[name]) {
+        ratingListsCache[name] = { ...cache[name], local: true, ratingList: true };
+        listsChanged = true;
+      }
+      delete cache[name];
+      cacheChanged = true;
+    }
+    if (PLAYLISTS[name]) {
+      delete PLAYLISTS[name];
+    }
+  }
+
+  for (const [key, val] of Object.entries(ratingListsCache)) {
+    if (key !== RATING_LIST_2_NAME && key !== RATING_LIST_3_NAME) {
+      delete ratingListsCache[key];
+      listsChanged = true;
+    } else if (val && typeof val === "object") {
+      val.local = true;
+      val.ratingList = true;
+    }
+  }
+
+  if (cacheChanged) writeCache();
+  if (listsChanged) writeRatingListsCache();
+}
+
+function ensureRatingListEntry(name, track) {
+  if (!name) return null;
+  if (!ratingListsCache[name]) {
+    ratingListsCache[name] = {
+      id: "rating_list_" + name,
+      label: name,
+      image: (track && track.image) || (currentTrack && currentTrack.image) || null,
+      loadedAt: Date.now(),
+      total: 0,
+      tracks: [],
+      local: true,
+      ratingList: true
+    };
+  } else {
+    ratingListsCache[name].local = true;
+    ratingListsCache[name].ratingList = true;
+    if (!Array.isArray(ratingListsCache[name].tracks)) {
+      ratingListsCache[name].tracks = [];
+    }
+  }
+  return ratingListsCache[name];
+}
+
+function applyRatingCovers() {
+  const styles = {
+    [RATING_LIST_2_NAME]: { bg: "var(--secondaryGrad)", label: RATING_LIST_2_NAME },
+    [RATING_LIST_3_NAME]: { bg: "var(--primaryGrad)", label: RATING_LIST_3_NAME }
+  };
+  for (const elNode of document.querySelectorAll("[data-name], [data-source], [data-playlist]")) {
+    const key = elNode.dataset.name || elNode.dataset.source || elNode.dataset.playlist;
+    const cfg = styles[key];
+    if (!cfg) continue;
+    const box = elNode.querySelector(".source-art, .target-art, .grid-art, .cover") || elNode;
+    const img = box.tagName === "IMG" ? box : box.querySelector("img");
+    if (img) img.style.display = "none";
+    const target = box.tagName === "IMG" && box.parentElement ? box.parentElement : box;
+    target.classList.add("rating-cover-card");
+    target.style.background = cfg.bg;
+    let badge = target.querySelector(".rating-cover-label");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "rating-cover-label";
+      badge.textContent = cfg.label;
+      target.appendChild(badge);
+    }
+  }
+}
+
+function syncRatedTrackLists(track, rating) {
+  if (!track || !track.uri) return;
+  const val = rating === 2 || rating === 3 ? rating : 1;
+  const list2 = ensureRatingListEntry(RATING_LIST_2_NAME, track);
+  const list3 = ensureRatingListEntry(RATING_LIST_3_NAME, track);
+
+  const upsert = (entry, include) => {
+    if (!entry) return;
+    const idx = entry.tracks.findIndex(t => t && t.uri === track.uri);
+    if (include) {
+      const item = idx >= 0 ? { ...entry.tracks[idx], ...track } : { ...track };
+      if (idx >= 0) entry.tracks[idx] = item;
+      else entry.tracks.push(item);
+      if (!entry.image && item.image) entry.image = item.image;
+    } else if (idx >= 0) {
+      entry.tracks.splice(idx, 1);
+    }
+    entry.total = entry.tracks.length;
+    entry.loadedAt = Date.now();
+  };
+
+  upsert(list2, val === 2);
+  upsert(list3, val === 3);
+  writeRatingListsCache();
+  applyRatingGridVisibility();
+  const activeSrc = typeof sourceName === "function" ? sourceName() : "";
+  if (activeSrc === RATING_LIST_2_NAME || activeSrc === RATING_LIST_3_NAME) {
+    renderTracks();
+  }
+}
+
+function hydrateRatingListsState() {
+  ratingListsCache = readRatingListsCache();
+  migrateRatingListsToOwnStorage();
+  rebuildRatingListsFromCache();
+  applyRatingGridVisibility();
+}
+
+function getRatingListEntry(name) {
+  if (name !== RATING_LIST_2_NAME && name !== RATING_LIST_3_NAME) return null;
+  if (!ratingListsCache || !Object.keys(ratingListsCache).length) {
+    ratingListsCache = readRatingListsCache();
+  }
+  return ratingListsCache[name] || null;
+}
+
+function rebuildRatingListsFromCache() {
+  ratingListsCache = readRatingListsCache();
+  migrateRatingListsToOwnStorage();
+  const map = ratingsMap();
+  const byUri = new Map();
+  for (const entry of Object.values(cache)) {
+    if (!entry || !Array.isArray(entry.tracks)) continue;
+    for (const t of entry.tracks) {
+      if (t && t.uri && !byUri.has(t.uri)) byUri.set(t.uri, t);
+    }
+  }
+  for (const entry of Object.values(ratingListsCache)) {
+    if (!entry || !Array.isArray(entry.tracks)) continue;
+    for (const t of entry.tracks) {
+      if (t && t.uri && !byUri.has(t.uri)) byUri.set(t.uri, t);
+    }
+  }
+  const list2 = ensureRatingListEntry(RATING_LIST_2_NAME, null);
+  const list3 = ensureRatingListEntry(RATING_LIST_3_NAME, null);
+  list2.tracks = [];
+  list3.tracks = [];
+  for (const [uri, r] of Object.entries(map)) {
+    const val = Number(r);
+    if (val !== 2 && val !== 3) continue;
+    const base = byUri.get(uri) || { uri, name: uri, artists: "", durationMs: 0 };
+    if (val === 2) {
+      const item2 = { ...base };
+      list2.tracks.push(item2);
+      if (!list2.image && item2.image) list2.image = item2.image;
+    }
+    if (val === 3) {
+      const item3 = { ...base };
+      list3.tracks.push(item3);
+      if (!list3.image && item3.image) list3.image = item3.image;
+    }
+  }
+  list2.total = list2.tracks.length;
+  list3.total = list3.tracks.length;
+  list2.loadedAt = Date.now();
+  list3.loadedAt = Date.now();
+  writeRatingListsCache();
+}
+
+const RATINGS_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/ratings";
+const RATINGS_KEY = "sp_ratings";
+const RATING_ON_KEY = "sp_rating_on";
+let ratingOn = localStorage.getItem(RATING_ON_KEY) === "1";
+
+function ratingsMap() {
+  const raw = localStorage.getItem(RATINGS_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch (_) { return {}; }
+}
+
+function getSongRating(uri) {
+  if (!uri) return 1;
+  const r = Number(ratingsMap()[uri]);
+  return r === 2 || r === 3 ? r : 1;
+}
+
+function collectRatedTracks(minRating) {
+  const map = ratingsMap();
+  const seen = new Set();
+  const out = [];
+  const pushTrack = t => {
+    if (!t || !t.uri || seen.has(t.uri)) return;
+    const r = getSongRating(t.uri);
+    if (r >= minRating) {
+      seen.add(t.uri);
+      out.push({ ...t, _rating: r });
+    }
+  };
+  for (const entry of Object.values(cache)) {
+    if (!entry || !Array.isArray(entry.tracks)) continue;
+    for (const t of entry.tracks) pushTrack(t);
+  }
+  for (const [uri, r] of Object.entries(map)) {
+    if (Number(r) >= minRating && !seen.has(uri)) {
+      seen.add(uri);
+      out.push({ uri, name: uri, artists: "", durationMs: 0, _rating: Number(r) });
+    }
+  }
+  return out;
+}
+
+const RATING_LIST_2_NAME = "●/●";
+const RATING_LIST_3_NAME = "●/●/●";
+
+
+
+const RATINGS_PENDING_KEY = "sp_ratings_pending";
+
+function readPendingRatings() {
+  const raw = localStorage.getItem(RATINGS_PENDING_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch (_) { return {}; }
+}
+
+function writePendingRatings(pending) {
+  localStorage.setItem(RATINGS_PENDING_KEY, JSON.stringify(pending));
+}
+
+async function flushPendingRatings(token) {
+  const pending = readPendingRatings();
+  const entries = Object.entries(pending);
+  if (!entries.length) return;
+  const authToken = token || (typeof getToken === "function" ? await getToken() : null);
+  if (!authToken) return;
+  const remaining = { ...pending };
+  for (const [uri, rating] of entries) {
+    const val = rating === 2 || rating === 3 ? rating : 1;
+    try {
+      const res = await fetch(RATINGS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: authToken, trackUri: uri, rating: val })
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!data || data.error) continue;
+      delete remaining[uri];
+    } catch (_) {}
+  }
+  writePendingRatings(remaining);
+}
+
+
+
+async function createRatedPlaylist(minRating) {
+  if (OFFLINE) {
+    setFeedback("Offline mode: cannot create playlist", true);
+    return;
+  }
+  const tracks = collectRatedTracks(minRating);
+  const uris = tracks.map(t => t.uri).filter(u => typeof u === "string" && u.startsWith("spotify:track:"));
+  if (!uris.length) {
+    setFeedback("No rated tracks found", true);
+    return;
+  }
+  try {
+    setStatus("Creating playlist…");
+    const token = await getToken();
+    const userId = await ensureIdentity(token);
+    const title = minRating === 3 ? "Rated 3★" : "Rated 2★ & 3★";
+    const createRes = await fetch(`https://api.spotify.com/v1/users/${encodeURIComponent(userId)}/playlists`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: title, public: false, description: `${uris.length} tracks rated ${minRating}★+` })
+    });
+    if (!createRes.ok) throw new Error("ERROR create playlist " + createRes.status);
+    const created = await createRes.json();
+    for (let i = 0; i < uris.length; i += 100) {
+      const chunk = uris.slice(i, i + 100);
+      const addRes = await fetch(`https://api.spotify.com/v1/playlists/${encodeURIComponent(created.id)}/tracks`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ uris: chunk })
+      });
+      if (!addRes.ok) throw new Error("ERROR add tracks " + addRes.status);
+    }
+    setStatus("");
+    setFeedback(`Created "${title}" (${uris.length} tracks)`, false);
+  } catch (err) {
+    setStatus("");
+    setFeedback(err.message, true);
+  }
+}
+
+
+async function syncRatingsPull(token) {
+  const authToken = token || (typeof getToken === "function" ? await getToken() : null);
+  if (!authToken) return ratingsMap();
+  await flushPendingRatings(authToken);
+  const res = await fetch(RATINGS_URL + "?accessToken=" + encodeURIComponent(authToken));
+  if (!res.ok) throw new Error("ERROR ratings pull " + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error("ERROR ratings pull " + data.error);
+  const items = data.items || [];
+  const local = ratingsMap();
+  const pending = readPendingRatings();
+  if (!items.length && Object.keys(local).length) return local;
+  const map = {};
+  for (const row of items) {
+    if (!row || !row.trackUri) continue;
+    const val = Number(row.rating);
+    map[row.trackUri] = val === 2 || val === 3 ? val : 1;
+  }
+  for (const [uri, r] of Object.entries(pending)) {
+    const val = Number(r);
+    map[uri] = val === 2 || val === 3 ? val : 1;
+  }
+  localStorage.setItem(RATINGS_KEY, JSON.stringify(map));
+  paintRatingPill();
+  return map;
+}
+
+async function setSongRating(uri, rating) {
+  if (!uri) return;
+  const val = rating === 2 || rating === 3 ? rating : 1;
+  const map = ratingsMap();
+  const prevVal = Number(map[uri] || 1);
+  if (val === 1 && prevVal === 1) return;
+
+  if (val === 1) {
+    delete map[uri];
+  } else {
+    map[uri] = val;
+  }
+  localStorage.setItem(RATINGS_KEY, JSON.stringify(map));
+  paintRatingPill();
+
+  let trackObj = currentTrack && currentTrack.uri === uri ? currentTrack : { uri };
+  for (const entry of Object.values(cache)) {
+    if (!entry || !Array.isArray(entry.tracks)) continue;
+    const found = entry.tracks.find(t => t && t.uri === uri);
+    if (found) {
+      trackObj = { ...found, ...trackObj };
+      break;
+    }
+  }
+  syncRatedTrackLists(trackObj, val);
+
+  const pending = readPendingRatings();
+  pending[uri] = val === 1 ? "delete" : val;
+  writePendingRatings(pending);
+  Promise.resolve(typeof getToken === "function" ? getToken() : null)
+    .then(async token => {
+      const authToken = token || localStorage.getItem("sp_access_token") || localStorage.getItem("sp_token") || "";
+      if (!authToken) throw new Error("ERROR no access token");
+      const action = val === 1 ? "delete" : "upsert";
+      const res = await fetch(RATINGS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: authToken, trackUri: uri, rating: val, action })
+      });
+      if (!res.ok) throw new Error("ERROR rating save " + res.status);
+      const data = await res.json();
+      if (data && data.error) throw new Error("ERROR wix rating: " + data.error);
+      const nextPending = readPendingRatings();
+      delete nextPending[uri];
+      writePendingRatings(nextPending);
+      setFeedback(val === 1 ? "Rating removed from Wix" : "Rating synced to Wix", false);
+    })
+    .catch(err => setFeedback(err.message, true));
+}
+
+function paintRatingPill() {
+  const pill = document.getElementById("np-rating-pill");
+  const view = document.getElementById("player-view");
+  if (!pill) return;
+  pill.style.display = ratingOn ? "inline-flex" : "none";
+  if (view) {
+    view.classList.toggle("has-rating-bar", ratingOn);
+  }
+  if (!ratingOn) return;
+  const activeScore = currentTrack ? getSongRating(currentTrack.uri) : 1;
+  pill.dataset.score = String(activeScore);
+  for (const btn of pill.querySelectorAll("button[data-rating]")) {
+    const stage = Number(btn.dataset.rating);
+    const active = activeScore >= 2 && stage <= activeScore;
+    btn.classList.toggle("active", active);
+    btn.classList.toggle("rating-2", active && activeScore === 2);
+    btn.classList.toggle("rating-3", active && activeScore === 3);
+  }
+}
+
 async function startSession(token) {
   const me = await ensureIdentity(token);
   el.auth.classList.add("hidden");
@@ -3642,10 +4223,17 @@ async function startSession(token) {
     } catch (_) {}
   }
   SOURCE_CANDIDATES.push(...Object.keys(PLAYLISTS).filter(n => !SOURCE_CANDIDATES.includes(n)));
+  rebuildRatingListsFromCache();
   writeCache();
 
   try {
     await syncPull(token);
+  } catch (err) {
+    setFeedback(err.message, true);
+  }
+  try {
+    await syncRatingsPull(token);
+    rebuildRatingListsFromCache();
   } catch (err) {
     setFeedback(err.message, true);
   }
@@ -3675,7 +4263,8 @@ async function startSession(token) {
   renderSourceGrid();
   renderTracks();
   paintVersionsButton();
-  
+  paintRatingPill();
+
   const sourcesLabel = document.getElementById("sources-label");
   if (sourcesLabel) sourcesLabel.textContent = sourceName();
 
@@ -4004,8 +4593,11 @@ function setHidden(name, uri, value) {
 }
 
 function playableTracks(name) {
-  const all = (cache[name] && cache[name].tracks) || [];
-  return all.filter(t => isPlayableTrack(name, t));
+  const targetName = name || getPlaybackSource();
+  const all = typeof getTracksForSource === "function"
+    ? getTracksForSource(targetName)
+    : ((cache[targetName] && cache[targetName].tracks) || []);
+  return all.filter(t => !isHidden(targetName, t.uri) && !isSpotifyLocalTrack(t));
 }
 
 function resetShuffleQueue(name, exclude) {
@@ -4017,7 +4609,7 @@ function resetShuffleQueue(name, exclude) {
 
 async function playNextShuffled(hide) {
   if (manualQueue.length) return playFromManualQueue(hide);
-  const name = sourceName();
+  const name = getPlaybackSource();
   const tracks = playableTracks(name);
   if (!tracks.length) return;
   const original = currentTrack;
@@ -4088,7 +4680,7 @@ async function playAdjacent(dir, hide) {
   if (dir === 1 && manualQueue.length) return playFromManualQueue(hide);
   if (shuffleOn && dir === 1) return playNextShuffled(hide);
 
-  const name = sourceName();
+  const name = getPlaybackSource();
   const allTracks = queueTracks(name);
   if (!allTracks.length || !currentTrack) return;
 
@@ -4284,7 +4876,7 @@ function togglePreviewMode() {
 
 
 async function previewAdvance() {
-  const name = sourceName();
+  const name = getPlaybackSource();
   const tracks = queueTracks(name);
   if (!tracks.length && !manualQueue.length) return false;
   if (!currentTrack) return false;
@@ -4506,7 +5098,7 @@ let _trackIndexCache = { name: "", uri: "", index: -1 };
 function queueUpcoming(count) {
   count = count || 8;
   const out = [];
-  const name = sourceName();
+  const name = getPlaybackSource();
 
   for (const t of manualQueue) {
     if (!isPlayableTrack(name, t)) continue;
@@ -4948,7 +5540,7 @@ function buildPlayer() {
   }
   splitsLayer.style.position = "absolute";
   splitsLayer.style.inset = "0";
-  splitsLayer.style.zIndex = "1";
+  splitsLayer.style.zIndex = "10";
   splitsLayer.style.pointerEvents = "none";
   let activeRangeLayer = progressWrap.querySelector(".preset-time-range-highlight");
   if (!activeRangeLayer) {
@@ -5129,21 +5721,32 @@ function buildPlayer() {
   versionsBtn.className = "np-versions-btn";
   versionsBtn.innerHTML = '<i class="fa-solid fa-code-branch"></i><span>1</span>';
   versionsBtn.style.display = "none";
+  versionsBtn.style.position = "absolute";
+  versionsBtn.style.right = "100%";
+  versionsBtn.style.marginRight = "6px";
   versionsBtn.title = "Switch version";
   versionsBtn.addEventListener("click", openVersionsPanel);
+  const titleRow = document.createElement("div");
+  titleRow.style.position = "relative";
+  titleRow.style.display = "inline-flex";
+  titleRow.style.alignItems = "center";
+  titleRow.style.maxWidth = "100%";
+  titleRow.append(versionsBtn, el.title);
   const artWrap = document.createElement("div");
   artWrap.className = "np-art-wrap";
   el.art.className = "np-art";
   bindImg(el.art, null);
   artWrap.style.cursor = "pointer";
   let artClickTimer = null;
-  artWrap.addEventListener("click", () => {
+  artWrap.addEventListener("click", ev => {
+    if (ev.target.closest("#np-rating-pill")) return;
     clearTimeout(artClickTimer);
     artClickTimer = setTimeout(() => {
       scrollMainTrackListToCurrent();
     }, 200);
   });
   artWrap.addEventListener("dblclick", ev => {
+    if (ev.target.closest("#np-rating-pill")) return;
     ev.preventDefault();
     ev.stopPropagation();
     clearTimeout(artClickTimer);
@@ -5151,7 +5754,34 @@ function buildPlayer() {
     toggleTrackListPip(false);
   });
   artWrap.appendChild(el.art);
-  center.append(artWrap, el.title, el.artists, versionsBtn, progressWrap, el.time);
+
+  const ratingPill = document.createElement("div");
+  ratingPill.id = "np-rating-pill";
+  ratingPill.className = "np-rating-pill";
+  ratingPill.addEventListener("click", ev => ev.stopPropagation());
+  ratingPill.addEventListener("dblclick", ev => ev.stopPropagation());
+  for (const n of [1, 2, 3]) {
+    const rb = document.createElement("button");
+    rb.type = "button";
+    rb.className = "np-rating-dot";
+    rb.dataset.rating = String(n);
+    rb.title = `${n} rating`;
+    rb.addEventListener("click", ev => {
+      ev.stopPropagation();
+      if (!currentTrack) return;
+      setSongRating(currentTrack.uri, n);
+    });
+    ratingPill.appendChild(rb);
+    if (n < 3) {
+      const slash = document.createElement("span");
+      slash.className = "np-rating-slash";
+      slash.textContent = "/";
+      ratingPill.appendChild(slash);
+    }
+  }
+  artWrap.appendChild(ratingPill);
+
+  center.append(artWrap, titleRow, el.artists, progressWrap, el.time);
   const controls = document.createElement("div");
   controls.className = "np-controls";
   const prev = document.createElement("button");
@@ -5219,38 +5849,7 @@ function buildPlayer() {
       if (isPlaying) {
         await fetch("https://api.spotify.com/v1/me/player/pause", {
           method: "PUT",
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (lastState) {
-          lastState.position = lastState.paused
-            ? lastState.position
-            : lastState.position + (Date.now() - lastState.timestamp);
-          lastState.timestamp = Date.now();
-          lastState.paused = true;
-          startProgress(lastState);
-        }
-        const toggleIcon = document.querySelector("#player-view .np-toggle i");
-        if (toggleIcon) toggleIcon.className = "fa-solid fa-play";
-        syncArtAuraPlaying(false);
-        return;
-      }
-      if (real && currentTrack) {
-        const realRef = { uri: real.uri, name: real.name, artists: real.artists, durationMs: real.durationMs };
-        if (!sameRecording(currentTrack, realRef)) {
-          await playFromGesture(currentTrack, token);
-          updatePlayerBar(currentTrack);
-          highlightTracks();
-          return;
-        }
-      } else if (currentTrack && !real) {
-        await playFromGesture(currentTrack, token);
-        updatePlayerBar(currentTrack);
-        highlightTracks();
-        return;
-      }
-      await fetch("https://api.spotify.com/v1/me/player", {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          headers: { Authorization: `Bearer ${token}` } }); if (lastState) { lastState.position = lastState.paused ? lastState.position : lastState.position + (Date.now() - lastState.timestamp); lastState.timestamp = Date.now(); lastState.paused = true; startProgress(lastState); } const toggleIcon = document.querySelector("#player-view .np-toggle i"); if (toggleIcon) toggleIcon.className = "fa-solid fa-play"; syncArtAuraPlaying(false); return; } if (real && currentTrack) { const realRef = { uri: real.uri, name: real.name, artists: real.artists, durationMs: real.durationMs }; if (!sameRecording(currentTrack, realRef)) { await playFromGesture(currentTrack, token); updatePlayerBar(currentTrack); highlightTracks(); return; } } else if (currentTrack && !real) { await playFromGesture(currentTrack, token); updatePlayerBar(currentTrack); highlightTracks(); return; } await fetch("https://api.spotify.com/v1/me/player", { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ device_ids: [deviceId], play: true })
       });
       if (lastState) {
@@ -5380,6 +5979,7 @@ function buildPlayer() {
   center.appendChild(controls);
   const seeks = document.createElement("div");
   seeks.className = "np-seeks";
+  seeks.style.marginBottom = "0";
 
   const back10 = document.createElement("button");
   back10.type = "button";
@@ -5426,6 +6026,7 @@ function buildPlayer() {
 
   seeks.append(back10, presetPill, fwd10);
   paintPresets(null);
+
   const rnd = document.createElement("button");
   rnd.type = "button";
   rnd.className = "np-shuffle";
@@ -5441,7 +6042,7 @@ function buildPlayer() {
     paintRnd();
   });
   controls.append(prev, toggle, filterBtn, rnd, queueBtn, previewBtn, volumeBtn, next);
-  center.appendChild(seeks);
+  center.append(seeks);
   const volume = document.createElement("div");
   volume.className = "np-volume";
   const vIcon = document.createElement("i");
@@ -5465,6 +6066,7 @@ function buildPlayer() {
   const gridParent = el.grid && el.grid.parentElement;
   if (gridParent) gridParent.insertBefore(view, el.grid);
   else document.body.appendChild(view);
+  paintRatingPill();
   paintRepeatButton();
   refreshArtAuraColors();
   syncArtAuraPlaying(false);
@@ -5558,8 +6160,9 @@ function applyGridScale(v) {
 }
 
 async function playRandom() {
-  changedPlayingNow()
   const name = sourceName();
+  setPlaybackSource(name);
+  changedPlayingNow()
   const tracks = ((cache[name] && cache[name].tracks) || []).filter(t => !isHidden(name, t.uri));
   if (!tracks.length) {
     setFeedback("ERROR no visible tracks", true);
@@ -5697,14 +6300,10 @@ function buildSourcesBar() {
     showHiddenGrid = reorderMode;
     paintEdit();
     paintTargetBar();
-    renderGrid("source");
-    renderGrid("target");
+    applyRatingGridVisibility();
   });
 
-  const hint = document.createElement("span");
-  hint.className = "sources-hint";
-  hint.textContent = "double-click to play";
-  bar.append(label, collapse, editBtn, hint);
+  bar.append(label, collapse, editBtn);
   return bar;
 }
 function buildTargetBar() {
@@ -5759,9 +6358,35 @@ function buildTargetBar() {
     showHiddenGrid = reorderMode;
     paintReorder();
     paintHidden();
-    renderGrid("target");
-    renderGrid("source");
+    applyRatingGridVisibility();
   });
+
+  const gridZoom = document.createElement("div");
+  gridZoom.className = "zoom-group";
+  const gridZoomIcon = document.createElement("i");
+  gridZoomIcon.className = "fa-solid fa-table-cells";
+  gridZoomIcon.title = "Grid size";
+  const gDown = document.createElement("button");
+  gDown.type = "button";
+  gDown.className= "outline-btn-scndry";
+  gDown.textContent = "-";
+  const gUp = document.createElement("button");
+  gUp.type = "button";
+  gUp.className= "outline-btn-scndry";
+  gUp.textContent = "+";
+  const gKey = "sp_grid_scale";
+  gDown.addEventListener("click", () => {
+    const v = Math.max(0.6, Number(localStorage.getItem(gKey) || 1) - 0.1);
+    localStorage.setItem(gKey, String(v));
+    applyGridScale(v);
+  });
+  gUp.addEventListener("click", () => {
+    const v = Math.min(2, Number(localStorage.getItem(gKey) || 1) + 0.1);
+    localStorage.setItem(gKey, String(v));
+    applyGridScale(v);
+  });
+  gridZoom.append(gridZoomIcon, gDown, gUp);
+  applyGridScale(localStorage.getItem(gKey) || 1);
 
   const pendingBtn = document.createElement("button");
   pendingBtn.type = "button";
@@ -5773,13 +6398,235 @@ function buildTargetBar() {
   pendingBtn.addEventListener("click", () => replayPending());
   const right = document.createElement("div");
   right.className = "target-right";
-  right.append(reorderBtn);
+  right.append(reorderBtn, gridZoom);
   right.appendChild(pendingBtn);
   bottom.appendChild(right);
 
   el.grid.parentElement.insertBefore(bottom, el.grid.nextSibling);
 
   return paintHidden;
+}
+
+function renderStructuredDataView(container, data, navStack) {
+  container.innerHTML = "";
+  const isPlainObj = v => v && typeof v === "object" && !Array.isArray(v);
+  const stack = Array.isArray(navStack) ? navStack : [];
+
+  if (stack.length > 0) {
+    const crumbBar = document.createElement("div");
+    crumbBar.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:5px 8px;background:var(--surface-2);border:1px solid var(--line);font-size:10px;";
+    const rootBtn = document.createElement("button");
+    rootBtn.type = "button";
+    rootBtn.textContent = "ROOT";
+    rootBtn.style.cssText = "background:var(--blackG);border:1px solid var(--darkG);color:var(--accent);padding:2px 6px;font-family:monospace;font-size:10px;font-weight:700;cursor:pointer;";
+    rootBtn.addEventListener("click", () => {
+      stack.length = 0;
+      renderStructuredDataView(container, data, stack);
+    });
+    crumbBar.appendChild(rootBtn);
+
+    stack.forEach((step, idx) => {
+      const sep = document.createElement("span");
+      sep.textContent = "/";
+      sep.style.color = "var(--grey)";
+      const stepBtn = document.createElement("button");
+      stepBtn.type = "button";
+      stepBtn.textContent = step.label;
+      stepBtn.style.cssText = "background:var(--surface);border:1px solid var(--line);color:var(--text);padding:2px 6px;font-family:monospace;font-size:10px;cursor:pointer;";
+      stepBtn.addEventListener("click", () => {
+        stack.splice(idx + 1);
+        renderStructuredDataView(container, step.value, stack);
+      });
+      crumbBar.append(sep, stepBtn);
+    });
+    container.appendChild(crumbBar);
+  }
+
+  const current = stack.length > 0 ? stack[stack.length - 1].value : data;
+  const drillInto = (label, nextVal) => {
+    stack.push({ label: String(label), value: nextVal });
+    renderStructuredDataView(container, data, stack);
+  };
+
+  if (Array.isArray(current)) {
+    if (!current.length) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "padding:8px;color:var(--grey);";
+      empty.textContent = "EMPTY ARRAY []";
+      container.appendChild(empty);
+      return;
+    }
+    current.forEach((item, i) => {
+      const expandable = isPlainObj(item) || Array.isArray(item);
+      const row = document.createElement("div");
+      row.style.cssText = `padding:7px 9px;border:1px solid ${expandable ? "var(--darkG)" : "var(--line)"};background:var(--darkGrad);display:flex;flex-direction:column;gap:4px;`;
+      const top = document.createElement("div");
+      top.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:600;color:var(--text);";
+
+      const titleBtn = document.createElement(expandable ? "button" : "span");
+      if (expandable) {
+        titleBtn.type = "button";
+        titleBtn.style.cssText = "background:transparent;border:none;padding:0;color:var(--text);font-family:monospace;font-size:11px;font-weight:700;text-align:left;cursor:pointer;display:flex;align-items:center;gap:6px;";
+        titleBtn.innerHTML = `<i class="fa-solid fa-chevron-right" style="color:var(--accent);font-size:9px;"></i>`;
+        const tSpan = document.createElement("span");
+        tSpan.textContent = `#${i}  ` + (isPlainObj(item) ? (item.label || item.name || item.playlistId || item.uri || item.id || `item ${i}`) : `[array · ${item.length}]`);
+        titleBtn.appendChild(tSpan);
+        titleBtn.addEventListener("click", () => drillInto(`#${i}`, item));
+      } else {
+        titleBtn.textContent = `#${i}  ${String(item)}`;
+      }
+
+      const badge = document.createElement("span");
+      badge.style.cssText = "color:var(--muted);font-weight:400;font-size:10px;flex-shrink:0;";
+      if (isPlainObj(item) && Array.isArray(item.tracks)) badge.textContent = `${item.tracks.length} tracks`;
+      else if (Array.isArray(item)) badge.textContent = `${item.length} items`;
+      else if (isPlainObj(item)) badge.textContent = `${Object.keys(item).length} fields`;
+      top.append(titleBtn, badge);
+      row.appendChild(top);
+
+      if (isPlainObj(item)) {
+        const meta = document.createElement("div");
+        meta.style.cssText = "color:var(--scndry1);font-size:10px;word-break:break-word;";
+        meta.textContent = Object.entries(item)
+          .filter(([k]) => k !== "tracks")
+          .slice(0, 5)
+          .map(([k, v]) => `${k}: ${typeof v === "object" && v !== null ? JSON.stringify(v) : String(v)}`)
+          .join(" · ");
+        row.appendChild(meta);
+      }
+      container.appendChild(row);
+    });
+    return;
+  }
+
+  if (isPlainObj(current)) {
+    const entries = Object.entries(current);
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "padding:8px;color:var(--grey);";
+      empty.textContent = "EMPTY OBJECT {}";
+      container.appendChild(empty);
+      return;
+    }
+    for (const [k, v] of entries) {
+      const expandable = isPlainObj(v) || Array.isArray(v);
+      const row = document.createElement("div");
+      row.style.cssText = `padding:7px 9px;border:1px solid ${expandable ? "var(--darkG)" : "var(--line)"};background:${expandable ? "var(--backgroundGrad3)" : "var(--darkGrad)"};display:flex;justify-content:space-between;align-items:center;gap:10px;`;
+
+      if (expandable) {
+        const keyBtn = document.createElement("button");
+        keyBtn.type = "button";
+        keyBtn.style.cssText = "background:transparent;border:none;padding:0;font-weight:700;color:var(--text);font-family:monospace;font-size:11px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:6px;word-break:break-word;";
+        keyBtn.innerHTML = `<i class="fa-solid fa-chevron-right" style="color:var(--accent);font-size:9px;"></i>`;
+        const kSpan = document.createElement("span");
+        kSpan.textContent = k;
+        keyBtn.appendChild(kSpan);
+        keyBtn.addEventListener("click", () => drillInto(k, v));
+
+        const valEl = document.createElement("span");
+        valEl.style.cssText = "color:var(--muted);text-align:right;font-size:10px;flex-shrink:0;font-weight:600;";
+        if (Array.isArray(v)) valEl.textContent = `[${v.length}]`;
+        else if (v.tracks && Array.isArray(v.tracks)) valEl.textContent = `${v.tracks.length} tracks`;
+        else valEl.textContent = `{${Object.keys(v).length}}`;
+
+        row.append(keyBtn, valEl);
+      } else {
+        const keyEl = document.createElement("span");
+        keyEl.style.cssText = "font-weight:600;color:var(--scndry1);word-break:break-word;font-size:10px;";
+        keyEl.textContent = k;
+
+        const valEl = document.createElement("span");
+        valEl.style.cssText = "color:var(--text);text-align:right;word-break:break-word;font-size:11px;";
+        valEl.textContent = String(v);
+
+        row.append(keyEl, valEl);
+      }
+      container.appendChild(row);
+    }
+    return;
+  }
+
+  const leaf = document.createElement("div");
+  leaf.style.cssText = "padding:8px;color:var(--text);word-break:break-word;";
+  leaf.textContent = String(current);
+  container.appendChild(leaf);
+}
+
+function exportDiagnosticsBundle() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    memory: {
+      cache,
+      PLAYLISTS,
+      SOURCE_CANDIDATES,
+      shuffleQueue,
+      manualQueue,
+      pendingQueue,
+      playbackSourceName: typeof getPlaybackSource === "function" ? getPlaybackSource() : playbackSourceName,
+      _trackIndexCache: typeof _trackIndexCache !== "undefined" ? _trackIndexCache : undefined
+    },
+    localStorage: Object.fromEntries(Object.keys(localStorage).sort().map(k => [k, localStorage.getItem(k)]))
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `spotifylter-diagnostics-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function importDiagnosticsBundle(onDone) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "application/json,.json";
+  input.addEventListener("change", async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (parsed.localStorage && typeof parsed.localStorage === "object") {
+        for (const [k, v] of Object.entries(parsed.localStorage)) {
+          if (typeof v === "string") localStorage.setItem(k, v);
+        }
+      }
+      if (parsed.memory && typeof parsed.memory === "object") {
+        if (parsed.memory.cache && typeof parsed.memory.cache === "object") {
+          for (const k of Object.keys(cache)) delete cache[k];
+          Object.assign(cache, parsed.memory.cache);
+        }
+        if (parsed.memory.PLAYLISTS && typeof parsed.memory.PLAYLISTS === "object") {
+          for (const k of Object.keys(PLAYLISTS)) delete PLAYLISTS[k];
+          Object.assign(PLAYLISTS, parsed.memory.PLAYLISTS);
+        }
+        if (Array.isArray(parsed.memory.SOURCE_CANDIDATES)) {
+          SOURCE_CANDIDATES.length = 0;
+          SOURCE_CANDIDATES.push(...parsed.memory.SOURCE_CANDIDATES);
+        }
+        if (Array.isArray(parsed.memory.shuffleQueue)) {
+          shuffleQueue.length = 0;
+          shuffleQueue.push(...parsed.memory.shuffleQueue);
+        }
+        if (Array.isArray(parsed.memory.manualQueue)) {
+          manualQueue.length = 0;
+          manualQueue.push(...parsed.memory.manualQueue);
+        }
+        if (Array.isArray(parsed.memory.pendingQueue)) {
+          pendingQueue.length = 0;
+          pendingQueue.push(...parsed.memory.pendingQueue);
+        }
+        if (parsed.memory.playbackSourceName && typeof setPlaybackSource === "function") {
+          setPlaybackSource(parsed.memory.playbackSourceName);
+        }
+      }
+      if (typeof onDone === "function") onDone();
+    } catch (err) {
+      setFeedback("ERROR import failed: " + err.message, true);
+    }
+  });
+  input.click();
 }
 
 
@@ -5789,19 +6636,20 @@ async function openDiagnosticsModal() {
 
   const overlay = document.createElement("div");
   overlay.id = "diagnostics-modal";
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(10,13,18,0.82);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;box-sizing:border-box;";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(6,8,12,0.86);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;box-sizing:border-box;";
 
   const box = document.createElement("div");
-  box.style.cssText = "background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);width:min(540px,94vw);max-height:85vh;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;color:var(--text);position:relative;box-sizing:border-box;";
+  box.style.cssText = "background:var(--surface);border:1px solid var(--line);border-radius:0;width:min(620px,95vw);max-height:86vh;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px;color:var(--text);position:relative;box-sizing:border-box;";
 
   const head = document.createElement("div");
-  head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+  head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--line);";
   const title = document.createElement("h3");
-  title.textContent = "Diagnostics & Storage";
-  title.style.cssText = "margin:0;font-size:16px;font-weight:600;";
+  title.textContent = "DIAGNOSTICS // STORAGE";
+  title.style.cssText = "margin:0;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;font-family:monospace;";
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
   closeBtn.className = "tool-close";
+  closeBtn.style.borderRadius = "0";
   closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
   closeBtn.addEventListener("click", () => overlay.remove());
   head.append(title, closeBtn);
@@ -5818,50 +6666,176 @@ async function openDiagnosticsModal() {
   const opsCursor = localStorage.getItem(OPS_CURSOR_KEY) || "none";
 
   const summaryGrid = document.createElement("div");
-  summaryGrid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;font-size:12px;";
+  summaryGrid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);font-size:11px;";
   const metrics = [
-    ["API (15m / 1h / 3h)", `${stats.m15} / ${stats.h1} / ${stats.h3}`],
-    ["API Hold", holdMs > 0 ? `${Math.ceil(holdMs / 1000)}s` : "None"],
-    ["Cached Playlists", `${cacheKeys.length} (${totalCachedTracks} tracks)`],
-    ["LocalStorage Cache", `${(localBytes / 1024).toFixed(1)} KB`],
-    ["Filtered Songs", String(hiddenTotal)],
-    ["Pending / Manual Q", `${pendingQueue.length} / ${manualQueue.length}`]
+    ["API (15M / 1H / 3H)", `${stats.m15} / ${stats.h1} / ${stats.h3}`],
+    ["API HOLD", holdMs > 0 ? `${Math.ceil(holdMs / 1000)}s` : "NONE"],
+    ["CACHED PLAYLISTS", `${cacheKeys.length} / ${totalCachedTracks} TRK`],
+    ["CACHE SIZE", `${(localBytes / 1024).toFixed(1)} KB`],
+    ["FILTERED SONGS", String(hiddenTotal)],
+    ["PENDING / MANUAL", `${pendingQueue.length} / ${manualQueue.length}`]
   ];
   for (const [label, val] of metrics) {
     const cell = document.createElement("div");
-    cell.style.cssText = "background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;";
-    cell.innerHTML = `<div style="color:var(--muted);font-size:11px;"></div><div style="font-weight:600;margin-top:2px;font-family:monospace;"></div>`;
+    cell.style.cssText = "background:var(--bg);padding:8px 10px;display:flex;flex-direction:column;gap:3px;";
+    cell.innerHTML = `<span style="color:var(--muted);font-size:10px;letter-spacing:0.06em;font-family:monospace;"></span><span style="font-weight:700;font-size:12px;font-family:monospace;"></span>`;
     cell.children[0].textContent = label;
     cell.children[1].textContent = val;
     summaryGrid.appendChild(cell);
   }
   box.appendChild(summaryGrid);
 
+  const viewer = document.createElement("div");
+  viewer.style.cssText = "display:none;flex-direction:column;gap:8px;background:var(--bg);border:1px solid var(--accent);padding:10px;";
+  const viewerHead = document.createElement("div");
+  viewerHead.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-family:monospace;padding-bottom:6px;border-bottom:1px solid var(--line);";
+  const viewerLabel = document.createElement("span");
+  viewerLabel.style.cssText = "font-weight:700;color:var(--text);word-break:break-all;";
+  const viewerCtrls = document.createElement("div");
+  viewerCtrls.style.cssText = "display:flex;align-items:center;gap:6px;flex-shrink:0;";
+  const viewModeBtn = document.createElement("button");
+  viewModeBtn.type = "button";
+  viewModeBtn.className = "outline-btn-scndry";
+  viewModeBtn.style.cssText = "padding:3px 8px;font-size:10px;border-radius:0;font-family:monospace;";
+  const viewerClose = document.createElement("button");
+  viewerClose.type = "button";
+  viewerClose.className = "outline-btn-scndry";
+  viewerClose.textContent = "HIDE";
+  viewerClose.style.cssText = "padding:3px 8px;font-size:10px;border-radius:0;font-family:monospace;";
+  viewerClose.addEventListener("click", () => {
+    viewer.style.display = "none";
+  });
+  viewerCtrls.append(viewModeBtn, viewerClose);
+  viewerHead.append(viewerLabel, viewerCtrls);
+
+  const structuredPane = document.createElement("div");
+  structuredPane.style.cssText = "max-height:220px;overflow:auto;font-family:monospace;font-size:11px;display:flex;flex-direction:column;gap:4px;";
+  const rawPane = document.createElement("pre");
+  rawPane.style.cssText = "display:none;margin:0;max-height:220px;overflow:auto;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-word;color:var(--text);";
+
+  let activeParsed = null;
+  let activeRawText = "";
+  let rawMode = false;
+
+  const syncViewerMode = () => {
+    if (rawMode) {
+      structuredPane.style.display = "none";
+      rawPane.style.display = "block";
+      rawPane.textContent = activeRawText;
+      viewModeBtn.textContent = "STRUCTURED";
+    } else {
+      rawPane.style.display = "none";
+      structuredPane.style.display = "flex";
+      renderStructuredDataView(structuredPane, activeParsed);
+      viewModeBtn.textContent = "RAW JSON";
+    }
+  };
+
+  viewModeBtn.addEventListener("click", () => {
+    rawMode = !rawMode;
+    syncViewerMode();
+  });
+
+  viewer.append(viewerHead, structuredPane, rawPane);
+  box.appendChild(viewer);
+
+  const showInViewer = (label, rawValue) => {
+    viewerLabel.textContent = label;
+    rawMode = false;
+    if (typeof rawValue === "string") {
+      try {
+        activeParsed = JSON.parse(rawValue);
+        activeRawText = JSON.stringify(activeParsed, null, 2);
+      } catch (_) {
+        activeParsed = rawValue;
+        activeRawText = rawValue;
+      }
+    } else {
+      activeParsed = rawValue;
+      activeRawText = JSON.stringify(rawValue, null, 2);
+    }
+    syncViewerMode();
+    viewer.style.display = "flex";
+    viewer.scrollIntoView({ block: "nearest" });
+  };
+
+  const buildRowsList = (items, emptyText) => {
+    const list = document.createElement("div");
+    list.style.cssText = "background:var(--bg);border:1px solid var(--line);font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;display:flex;flex-direction:column;";
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "padding:8px 10px;color:var(--muted);";
+      empty.textContent = emptyText;
+      list.appendChild(empty);
+      return list;
+    }
+    items.forEach(({ label, meta, onClick }, idx) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.style.cssText = `display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;background:transparent;border:none;${idx > 0 ? "border-top:1px solid var(--line);" : ""}padding:6px 10px;color:var(--text);font-family:monospace;font-size:11px;text-align:left;cursor:pointer;`;
+      row.addEventListener("mouseenter", () => { row.style.background = "var(--surface-2)"; });
+      row.addEventListener("mouseleave", () => { row.style.background = "transparent"; });
+      row.addEventListener("click", onClick);
+      const left = document.createElement("span");
+      left.textContent = label;
+      const right = document.createElement("span");
+      right.style.color = "var(--muted)";
+      right.textContent = meta;
+      row.append(left, right);
+      list.appendChild(row);
+    });
+    return list;
+  };
+
+  const memSection = document.createElement("div");
+  memSection.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+  const memTitle = document.createElement("div");
+  memTitle.textContent = "MEMORY CACHES & STATE";
+  memTitle.style.cssText = "font-size:10px;font-weight:700;letter-spacing:0.08em;color:var(--muted);font-family:monospace;";
+  const memEntries = [
+    ["cache", cache, `${cacheKeys.length} playlists`],
+    ["PLAYLISTS", PLAYLISTS, `${Object.keys(PLAYLISTS || {}).length} entries`],
+    ["SOURCE_CANDIDATES", SOURCE_CANDIDATES, `${(SOURCE_CANDIDATES || []).length} sources`],
+    ["shuffleQueue", shuffleQueue, `${(shuffleQueue || []).length} items`],
+    ["manualQueue", manualQueue, `${(manualQueue || []).length} items`],
+    ["pendingQueue", pendingQueue, `${(pendingQueue || []).length} items`],
+    ["playbackSourceName", typeof getPlaybackSource === "function" ? getPlaybackSource() : playbackSourceName, (typeof getPlaybackSource === "function" ? getPlaybackSource() : playbackSourceName) || "none"]
+  ];
+  if (typeof _trackIndexCache !== "undefined") {
+    memEntries.push(["_trackIndexCache", _trackIndexCache, _trackIndexCache.name || "empty"]);
+  }
+  const memList = buildRowsList(
+    memEntries.map(([label, data, metaText]) => ({
+      label,
+      meta: metaText,
+      onClick: () => showInViewer("MEMORY // " + label, data)
+    })),
+    "No memory entries"
+  );
+  memSection.append(memTitle, memList);
+  box.appendChild(memSection);
+
   const lsSection = document.createElement("div");
   lsSection.style.cssText = "display:flex;flex-direction:column;gap:6px;";
   const lsTitle = document.createElement("div");
-  lsTitle.textContent = "LocalStorage Keys";
-  lsTitle.style.cssText = "font-size:12px;font-weight:600;color:var(--muted);";
-  const lsList = document.createElement("div");
-  lsList.style.cssText = "background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-family:monospace;font-size:11px;max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;";
-  const spKeys = Object.keys(localStorage).filter(k => k.startsWith("sp_") || k === "spotifylter_version").sort();
-  if (!spKeys.length) {
-    lsList.textContent = "No keys found";
-  } else {
-    for (const k of spKeys) {
+  lsTitle.textContent = "LOCALSTORAGE KEYS";
+  lsTitle.style.cssText = "font-size:10px;font-weight:700;letter-spacing:0.08em;color:var(--muted);font-family:monospace;";
+  const allKeys = Object.keys(localStorage).sort();
+  const lsList = buildRowsList(
+    allKeys.map(k => {
       const v = localStorage.getItem(k) || "";
       const kb = (new Blob([v]).size / 1024).toFixed(2);
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;justify-content:space-between;gap:8px;";
-      row.innerHTML = `<span></span><span style="color:var(--muted);"></span>`;
-      row.children[0].textContent = k;
-      row.children[1].textContent = `${kb} KB`;
-      lsList.appendChild(row);
-    }
-  }
+      return {
+        label: k,
+        meta: `${kb} KB`,
+        onClick: () => showInViewer("LOCALSTORAGE // " + k, v)
+      };
+    }),
+    "No keys found"
+  );
   const cursorNote = document.createElement("div");
-  cursorNote.textContent = "Ops cursor: " + opsCursor;
-  cursorNote.style.cssText = "font-size:11px;color:var(--muted);font-family:monospace;";
+  cursorNote.textContent = "OPS CURSOR: " + opsCursor;
+  cursorNote.style.cssText = "font-size:10px;color:var(--muted);font-family:monospace;letter-spacing:0.04em;";
   lsSection.append(lsTitle, lsList, cursorNote);
   box.appendChild(lsSection);
 
@@ -5870,15 +6844,16 @@ async function openDiagnosticsModal() {
   const wixHead = document.createElement("div");
   wixHead.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
   const wixTitle = document.createElement("span");
-  wixTitle.textContent = "Wix Storage";
-  wixTitle.style.cssText = "font-size:12px;font-weight:600;color:var(--muted);";
+  wixTitle.textContent = "WIX STORAGE";
+  wixTitle.style.cssText = "font-size:10px;font-weight:700;letter-spacing:0.08em;color:var(--muted);font-family:monospace;";
   const checkWixBtn = document.createElement("button");
   checkWixBtn.type = "button";
   checkWixBtn.className = "outline-btn-scndry";
-  checkWixBtn.textContent = "Check Wix";
+  checkWixBtn.style.cssText = "padding:4px 10px;font-size:10px;border-radius:0;font-family:monospace;";
+  checkWixBtn.textContent = "CHECK WIX";
   const wixBox = document.createElement("div");
-  wixBox.style.cssText = "background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;white-space:pre-wrap;color:var(--muted);";
-  wixBox.textContent = OFFLINE ? "OFFLINE mode active" : "Click \"Check Wix\" to inspect index & pending items.";
+  wixBox.style.cssText = "background:var(--bg);border:1px solid var(--line);padding:8px 10px;font-family:monospace;font-size:11px;max-height:150px;overflow-y:auto;white-space:pre-wrap;color:var(--muted);";
+  wixBox.textContent = OFFLINE ? "OFFLINE mode active" : "Click \"CHECK WIX\" to inspect index & pending items.";
 
   checkWixBtn.addEventListener("click", async () => {
     if (OFFLINE) {
@@ -5923,11 +6898,32 @@ async function openDiagnosticsModal() {
   box.appendChild(wixSection);
 
   const actions = document.createElement("div");
-  actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:4px;";
+  actions.style.cssText = "display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding-top:10px;border-top:1px solid var(--line);";
+
+  const ioGroup = document.createElement("div");
+  ioGroup.style.cssText = "display:flex;gap:8px;";
+  const exportBtn = document.createElement("button");
+  exportBtn.type = "button";
+  exportBtn.className = "outline-btn-scndry";
+  exportBtn.style.cssText = "border-radius:0;font-family:monospace;font-size:11px;";
+  exportBtn.textContent = "EXPORT";
+  exportBtn.addEventListener("click", exportDiagnosticsBundle);
+
+  const importBtn = document.createElement("button");
+  importBtn.type = "button";
+  importBtn.className = "outline-btn-scndry";
+  importBtn.style.cssText = "border-radius:0;font-family:monospace;font-size:11px;";
+  importBtn.textContent = "IMPORT";
+  importBtn.addEventListener("click", () => importDiagnosticsBundle(() => openDiagnosticsModal()));
+  ioGroup.append(exportBtn, importBtn);
+
+  const rightGroup = document.createElement("div");
+  rightGroup.style.cssText = "display:flex;gap:8px;";
   const clearLogBtn = document.createElement("button");
   clearLogBtn.type = "button";
   clearLogBtn.className = "outline-btn-scndry";
-  clearLogBtn.textContent = "Clear API log";
+  clearLogBtn.style.cssText = "border-radius:0;font-family:monospace;font-size:11px;";
+  clearLogBtn.textContent = "CLEAR API LOG";
   clearLogBtn.addEventListener("click", () => {
     localStorage.removeItem(API_LOG_KEY);
     paintApiCounter();
@@ -5936,9 +6932,12 @@ async function openDiagnosticsModal() {
   const doneBtn = document.createElement("button");
   doneBtn.type = "button";
   doneBtn.className = "outline-btn";
-  doneBtn.textContent = "Close";
+  doneBtn.style.cssText = "border-radius:0;font-family:monospace;font-size:11px;";
+  doneBtn.textContent = "CLOSE";
   doneBtn.addEventListener("click", () => overlay.remove());
-  actions.append(clearLogBtn, doneBtn);
+  rightGroup.append(clearLogBtn, doneBtn);
+
+  actions.append(ioGroup, rightGroup);
   box.appendChild(actions);
 
   overlay.appendChild(box);
@@ -7176,8 +8175,9 @@ function tickOfflineSimulation() {
 
 async function startOfflineSession() {
   showApp();
-  setStatus("OFFLINE - Reading from Wix...");
+  setStatus("OFFLINE - Reading from cache & Wix...");
   readCache();
+  hydrateRatingListsState();
 
   let token = null;
   try {
@@ -7235,7 +8235,8 @@ async function startOfflineSession() {
                       loadedAt: Number(parsed.loadedAt) || Date.now(),
                       total: parsed.total || parsed.tracks.length,
                       snapshot_id: parsed.snapshot_id || null,
-                      tracks: parsed.tracks
+                      tracks: parsed.tracks,
+                      local: false
                     };
                   }
                 }
@@ -7251,25 +8252,36 @@ async function startOfflineSession() {
 
   writeCache();
 
-  const cachedNames = Object.keys(cache);
-  if (cachedNames.length > 0) {
-    for (const name of cachedNames) {
-      if (!PLAYLISTS[name]) {
-        PLAYLISTS[name] = { id: cache[name].id || ("offline_" + name), label: cache[name].label || name, image: cache[name].image || null, local: cache[name].local || true };
-      }
-      if (!SOURCE_CANDIDATES.includes(name)) {
-        SOURCE_CANDIDATES.push(name);
-      }
+  for (const [name, entry] of Object.entries(cache)) {
+    if (!entry || typeof entry !== "object") continue;
+    if (name === RATING_LIST_2_NAME || name === RATING_LIST_3_NAME) continue;
+    const isLocal = Boolean(entry.local || String(name).startsWith("local:") || String(entry.id || "").startsWith("local_"));
+    if (!PLAYLISTS[name]) {
+      PLAYLISTS[name] = {
+        id: entry.id || ("offline_" + name),
+        label: entry.label || name,
+        image: entry.image || null,
+        local: isLocal
+      };
+    }
+    if (!SOURCE_CANDIDATES.includes(name)) {
+      SOURCE_CANDIDATES.push(name);
     }
   }
+
+  hydrateRatingListsState();
 
   if (!SOURCE_CANDIDATES.length) {
     SOURCE_CANDIDATES.push("playlist");
   }
   const defaultSource = SOURCE_CANDIDATES.includes(sourceName()) ? sourceName() : SOURCE_CANDIDATES[0];
   localStorage.setItem(SOURCE_KEY, defaultSource);
-  if (!currentTrack && cache[defaultSource] && cache[defaultSource].tracks && cache[defaultSource].tracks.length) {
-    currentTrack = cache[defaultSource].tracks[0];
+  if (!playbackSourceName) {
+    setPlaybackSource(defaultSource);
+  }
+  const activeEntry = getRatingListEntry(defaultSource) || cache[defaultSource];
+  if (!currentTrack && activeEntry && activeEntry.tracks && activeEntry.tracks.length) {
+    currentTrack = activeEntry.tracks[0];
     updatePlayerBar(currentTrack);
     applyAdaptiveColor(currentTrack);
   }
@@ -7287,8 +8299,9 @@ async function startOfflineSession() {
 }
 
 async function playFirstInSource() {
-  changedPlayingNow();
   const name = sourceName();
+  setPlaybackSource(name);
+  changedPlayingNow();
   const tracks = queueTracks(name);
   const candidate = playAll
     ? tracks[0]
@@ -7318,7 +8331,7 @@ async function boot() {
   buildAuthBox();
   el.redirect.textContent = redirectUri();
   el.clientId.value = getClientId();
-if (!document.getElementById("fa-css")) {
+  if (!document.getElementById("fa-css")) {
     const fa = document.createElement("link");
     fa.id = "fa-css";
     fa.rel = "stylesheet";
@@ -7335,18 +8348,18 @@ if (!document.getElementById("fa-css")) {
   songsToggle.className = "fill-btn";
   songsToggle.innerHTML = '<i class="fa-solid fa-list-ul"></i><span>Songs</span>';
 
-const skipToggle = document.createElement("button");
+  const skipToggle = document.createElement("button");
   skipToggle.type = "button";
-  skipToggle.className = "outline-btn";
+  skipToggle.className = "outline-btn-scndry";
   skipToggle.innerHTML = '<i class="fa-solid fa-filter"></i><span>Filter</span>';
-  
+
   const paintSkip = () => {
     skipToggle.classList.toggle("on", hideOnSkip);
     if (window.paintPlayerFilter) window.paintPlayerFilter();
   };
-  
+
   paintSkip();
-  
+
   skipToggle.addEventListener("click", () => {
     hideOnSkip = !hideOnSkip;
     localStorage.setItem("sp_hide_on_skip", hideOnSkip ? "1" : "0");
@@ -7357,7 +8370,7 @@ const skipToggle = document.createElement("button");
     skipToggle.classList.toggle("on", hideOnSkip);
     if (window.paintPlayerFilter) window.paintPlayerFilter();
   };
-  
+
   window.paintPlayerFilter();
 
   const playerZoom = document.createElement("div");
@@ -7367,9 +8380,11 @@ const skipToggle = document.createElement("button");
   playerZoomIcon.title = "Player size";
   const pDown = document.createElement("button");
   pDown.type = "button";
+  pDown.className= "outline-btn-scndry";
   pDown.textContent = "-";
   const pUp = document.createElement("button");
   pUp.type = "button";
+  pUp.className= "outline-btn-scndry";
   pUp.textContent = "+";
   const pKey = "sp_player_scale";
   pDown.addEventListener("click", () => {
@@ -7385,32 +8400,23 @@ const skipToggle = document.createElement("button");
   playerZoom.append(playerZoomIcon, pDown, pUp);
   applyPlayerScale(localStorage.getItem(pKey) || 1);
 
-  const gridZoom = document.createElement("div");
-  gridZoom.className = "zoom-group";
-  const gridZoomIcon = document.createElement("i");
-  gridZoomIcon.className = "fa-solid fa-table-cells";
-  gridZoomIcon.title = "Grid size";
-  const gDown = document.createElement("button");
-  gDown.type = "button";
-  gDown.textContent = "-";
-  const gUp = document.createElement("button");
-  gUp.type = "button";
-  gUp.textContent = "+";
-  const gKey = "sp_grid_scale";
-  gDown.addEventListener("click", () => {
-    const v = Math.max(0.6, Number(localStorage.getItem(gKey) || 1) - 0.1);
-    localStorage.setItem(gKey, String(v));
-    applyGridScale(v);
+  const ratingToggle = document.createElement("button");
+  ratingToggle.type = "button";
+  ratingToggle.className = "outline-btn";
+  ratingToggle.textContent = RATING_LIST_3_NAME;
+  const paintRatingToggle = () => {
+    ratingToggle.classList.toggle("on", ratingOn);
+    paintRatingPill();
+    applyRatingGridVisibility();
+  };
+  paintRatingToggle();
+  ratingToggle.addEventListener("click", () => {
+    ratingOn = !ratingOn;
+    localStorage.setItem(RATING_ON_KEY, ratingOn ? "1" : "0");
+    paintRatingToggle();
   });
-  gUp.addEventListener("click", () => {
-    const v = Math.min(2, Number(localStorage.getItem(gKey) || 1) + 0.1);
-    localStorage.setItem(gKey, String(v));
-    applyGridScale(v);
-  });
-  gridZoom.append(gridZoomIcon, gDown, gUp);
-  applyGridScale(localStorage.getItem(gKey) || 1);
 
-  songsRow.append(songsToggle, skipToggle, playerZoom, gridZoom);
+  songsRow.append(songsToggle, skipToggle, ratingToggle, playerZoom);
 
   const songsTools = document.createElement("div");
   songsTools.className = "songs-tools";
@@ -7431,14 +8437,14 @@ const skipToggle = document.createElement("button");
   const undoBtn = document.createElement("button");
   undoBtn.type = "button";
   undoBtn.className = "outline-btn-scndry";
-  undoBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i><span>Undo</span>';
+  undoBtn.innerHTML = '<i class="fa-solid fa-rotate-left"></i>';
   undoBtn.title = "Undo last hidden song (Ctrl+Z)";
   undoBtn.addEventListener("click", () => undoLastHide());
 
   const trackListWinBtn = document.createElement("button");
   trackListWinBtn.type = "button";
   trackListWinBtn.className = "outline-btn-scndry";
-  trackListWinBtn.innerHTML = '<i class="fa-solid fa-picture-in-picture"></i><span>Windowed</span>';
+  trackListWinBtn.innerHTML = '<i class="fa-solid fa-picture-in-picture"></i>';
   trackListWinBtn.title = "Track list PiP";
   trackListWinBtn.addEventListener("click", () => toggleTrackListPip(false));
 
@@ -7447,7 +8453,7 @@ const skipToggle = document.createElement("button");
   reverseBtn.className = "outline-btn-scndry";
   const paintReverse = () => {
     reverseBtn.classList.toggle("on", reverseOrder);
-    reverseBtn.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short"></i><span>Reverse</span>';
+    reverseBtn.innerHTML = '<i class="fa-solid fa-arrow-down-wide-short"></i>';
   };
   paintReverse();
   reverseBtn.addEventListener("click", () => {
@@ -7457,6 +8463,34 @@ const skipToggle = document.createElement("button");
     renderTracks();
     highlightTracks();
     resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
+  });
+
+  const twoDotsBtn = document.createElement("button");
+  twoDotsBtn.type = "button";
+  twoDotsBtn.className = "outline-btn";
+  twoDotsBtn.textContent = RATING_LIST_2_NAME;
+  const paintTwoDots = () => {
+    twoDotsBtn.classList.toggle("on", ratingDot2Filter);
+  };
+  paintTwoDots();
+  twoDotsBtn.addEventListener("click", () => {
+    ratingDot2Filter = !ratingDot2Filter;
+    paintTwoDots();
+    syncRatingDotFilterState();
+  });
+
+  const threeDotsBtn = document.createElement("button");
+  threeDotsBtn.type = "button";
+  threeDotsBtn.className = "outline-btn";
+  threeDotsBtn.textContent = RATING_LIST_3_NAME;
+  const paintThreeDots = () => {
+    threeDotsBtn.classList.toggle("on", ratingDot3Filter);
+  };
+  paintThreeDots();
+  threeDotsBtn.addEventListener("click", () => {
+    ratingDot3Filter = !ratingDot3Filter;
+    paintThreeDots();
+    syncRatingDotFilterState();
   });
 
   const spacer = document.createElement("span");
@@ -7469,9 +8503,11 @@ const skipToggle = document.createElement("button");
   };
   const sDown = document.createElement("button");
   sDown.type = "button";
+  sDown.className= "outline-btn-scndry";
   sDown.textContent = "-";
   const sUp = document.createElement("button");
   sUp.type = "button";
+  sUp.className= "outline-btn-scndry";
   sUp.textContent = "+";
   sDown.addEventListener("click", () => {
     localStorage.setItem(sKey, String(Math.max(0.6, Number(localStorage.getItem(sKey) || 1) - 0.1)));
@@ -7561,7 +8597,6 @@ const skipToggle = document.createElement("button");
   }
   sortSelect.value = songSort;
 
-
   const queueToggle = document.createElement("button");
   queueToggle.type = "button";
   queueToggle.className = "outline-btn-scndry";
@@ -7593,9 +8628,9 @@ const skipToggle = document.createElement("button");
     renderTracks();
   });
 
-  songsFilters.append(filterWrap, hiddenSelect, hiddenStageGroup, sortSelect, queueToggle, playAllBtn);
+  songsFilters.append(filterWrap, hiddenSelect, hiddenStageGroup, sortSelect, queueToggle);
 
-  songsTools.append(playSourceBtn, unhideBtn, undoBtn, trackListWinBtn, reverseBtn, spacer, songsZoom);
+  songsTools.append(playSourceBtn, twoDotsBtn, threeDotsBtn, unhideBtn, undoBtn, trackListWinBtn, reverseBtn, spacer, songsZoom);
 
   const songsHeader = document.createElement("div");
   songsHeader.className = "songs-header";
@@ -7647,11 +8682,11 @@ const skipToggle = document.createElement("button");
   panelHost.id = "tool-panel-host";
   toolsHost.append(toolsGrid, panelHost);
   songsPanel.parentElement.insertBefore(toolsHost, songsPanel);
-  createSongsPanelDock()
+  createSongsPanelDock();
 
   const toolsBtn = document.createElement("button");
   toolsBtn.type = "button";
-  toolsBtn.className = "outline-btn";
+  toolsBtn.className = "outline-btn-scndry";
   toolsBtn.innerHTML = '<i class="fa-solid fa-toolbox"></i><span> Tools</span>';
   toolsBtn.dataset.tool = "tools";
   const paintTools = () => toolsBtn.classList.toggle("active", !toolsCollapsed);
@@ -7666,7 +8701,7 @@ const skipToggle = document.createElement("button");
   renderToolsGrid();
   paintToolsBadge();
 
-const pipBtn = document.createElement("button");
+  const pipBtn = document.createElement("button");
   pipBtn.type = "button";
   pipBtn.id = "pip-mode-btn";
   pipBtn.className = "outline-btn";
@@ -7720,7 +8755,8 @@ const pipBtn = document.createElement("button");
   });
   try {
     readCache();
-    
+    hydrateRatingListsState();
+
     const savedHue = localStorage.getItem("sp_theme_hue");
     const adaptiveOn = localStorage.getItem("sp_adaptive_color") === "1";
     if (adaptiveOn && currentTrack && currentTrack.image) {
@@ -7730,7 +8766,7 @@ const pipBtn = document.createElement("button");
     }
 
     if (OFFLINE) {
-      startOfflineSession();
+      await startOfflineSession();
       const container = document.getElementById("source-container");
       if (container) container.style.display = "block";
       return;
@@ -7776,6 +8812,7 @@ const pipBtn = document.createElement("button");
       return;
     }
     await startSession(token);
+    hydrateRatingListsState();
   } catch (err) {
     localStorage.removeItem("sp_token");
     showAuth(err.message);

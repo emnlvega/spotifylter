@@ -471,6 +471,16 @@ function syncTrackListControls(doc) {
   for (const btn of stageBtns) {
     btn.classList.toggle("active", btn.dataset.value === currentFilterVal);
   }
+
+  const pipTwoDots = doc.getElementById("pip-two-dots-btn");
+  if (pipTwoDots && typeof ratingDot2Filter !== "undefined") {
+    pipTwoDots.classList.toggle("on", ratingDot2Filter);
+  }
+
+  const pipThreeDots = doc.getElementById("pip-three-dots-btn");
+  if (pipThreeDots && typeof ratingDot3Filter !== "undefined") {
+    pipThreeDots.classList.toggle("on", ratingDot3Filter);
+  }
 }
 
 function buildTrackListToolbar(doc) {
@@ -569,7 +579,40 @@ function buildTrackListToolbar(doc) {
   }
 
   paintHiddenStages(filterSelect.value);
-  toolbar.append(filterWrap, filterSelect, hiddenStageGroup);
+
+  const twoDotsBtn = doc.createElement("button");
+  twoDotsBtn.type = "button";
+  twoDotsBtn.id = "pip-two-dots-btn";
+  twoDotsBtn.className = "outline-btn" + (typeof ratingDot2Filter !== "undefined" && ratingDot2Filter ? " on" : "");
+  twoDotsBtn.textContent = typeof RATING_LIST_2_NAME !== "undefined" ? RATING_LIST_2_NAME : "";
+  twoDotsBtn.addEventListener("click", () => {
+    if (typeof ratingDot2Filter !== "undefined") {
+      ratingDot2Filter = !ratingDot2Filter;
+      twoDotsBtn.classList.toggle("on", ratingDot2Filter);
+    }
+    if (typeof syncRatingDotFilterState === "function") {
+      syncRatingDotFilterState();
+    }
+    syncTrackListPip();
+  });
+
+  const threeDotsBtn = doc.createElement("button");
+  threeDotsBtn.type = "button";
+  threeDotsBtn.id = "pip-three-dots-btn";
+  threeDotsBtn.className = "outline-btn" + (typeof ratingDot3Filter !== "undefined" && ratingDot3Filter ? " on" : "");
+  threeDotsBtn.textContent = typeof RATING_LIST_3_NAME !== "undefined" ? RATING_LIST_3_NAME : "";
+  threeDotsBtn.addEventListener("click", () => {
+    if (typeof ratingDot3Filter !== "undefined") {
+      ratingDot3Filter = !ratingDot3Filter;
+      threeDotsBtn.classList.toggle("on", ratingDot3Filter);
+    }
+    if (typeof syncRatingDotFilterState === "function") {
+      syncRatingDotFilterState();
+    }
+    syncTrackListPip();
+  });
+
+  toolbar.append(filterWrap, filterSelect,  twoDotsBtn, threeDotsBtn, hiddenStageGroup);
   return toolbar;
 }
 
@@ -1064,6 +1107,32 @@ function bindTrackListCoverTriggers(doc) {
   }
 }
 
+function paintRatingPill() {
+  const docs = [document];
+  if (typeof pipWindow !== "undefined" && pipWindow && !pipWindow.closed && pipWindow.document) {
+    docs.push(pipWindow.document);
+  }
+  const activeScore = currentTrack ? getSongRating(currentTrack.uri) : 1;
+  for (const doc of docs) {
+    const pill = doc.getElementById("np-rating-pill");
+    const view = doc.getElementById("player-view");
+    if (!pill) continue;
+    pill.style.display = ratingOn ? "inline-flex" : "none";
+    if (view) {
+      view.classList.toggle("has-rating-bar", ratingOn);
+    }
+    if (!ratingOn) continue;
+    pill.dataset.score = String(activeScore);
+    for (const btn of pill.querySelectorAll("button[data-rating]")) {
+      const stage = Number(btn.dataset.rating);
+      const active = activeScore >= 2 && stage <= activeScore;
+      btn.classList.toggle("active", active);
+      btn.classList.toggle("rating-2", active && activeScore === 2);
+      btn.classList.toggle("rating-3", active && activeScore === 3);
+    }
+  }
+}
+
 function buildPipLayout(doc) {
   doc.body.className = "pip-body";
   doc.body.innerHTML = "";
@@ -1083,11 +1152,41 @@ function buildPipLayout(doc) {
 
   const artWrap = doc.createElement("div");
   artWrap.className = "np-art-wrap pip-art-wrap";
+  artWrap.style.position = "relative";
   const art = doc.createElement("img");
   art.id = "pip-art";
   art.className = "np-art";
   art.alt = "";
   artWrap.appendChild(art);
+
+  const ratingPill = doc.createElement("div");
+  ratingPill.id = "np-rating-pill";
+  ratingPill.className = "np-rating-pill";
+  ratingPill.style.position = "absolute";
+  ratingPill.style.left = "50%";
+  ratingPill.style.transform = "translateX(-50%)";
+  ratingPill.addEventListener("click", ev => ev.stopPropagation());
+  ratingPill.addEventListener("dblclick", ev => ev.stopPropagation());
+  for (const n of [1, 2, 3]) {
+    const rb = doc.createElement("button");
+    rb.type = "button";
+    rb.className = "np-rating-dot";
+    rb.dataset.rating = String(n);
+    rb.title = `${n} rating`;
+    rb.addEventListener("click", ev => {
+      ev.stopPropagation();
+      if (!currentTrack) return;
+      setSongRating(currentTrack.uri, n);
+    });
+    ratingPill.appendChild(rb);
+    if (n < 3) {
+      const slash = doc.createElement("span");
+      slash.className = "np-rating-slash";
+      slash.textContent = "/";
+      ratingPill.appendChild(slash);
+    }
+  }
+  artWrap.appendChild(ratingPill);
 
   const meta = doc.createElement("div");
   meta.id = "pip-meta";
@@ -1183,6 +1282,24 @@ function buildPipLayout(doc) {
     syncPipState();
   });
 
+  const ratingBtn = doc.createElement("button");
+  ratingBtn.type = "button";
+  ratingBtn.id = "pip-rating-btn";
+  ratingBtn.className = "np-shuffle pip-ctrl-btn";
+  ratingBtn.textContent = "●";
+  ratingBtn.title = "Rating lists";
+  ratingBtn.addEventListener("click", () => {
+    if (typeof ratingOn !== "undefined") {
+      ratingOn = !ratingOn;
+      if (typeof RATING_ON_KEY !== "undefined") {
+        localStorage.setItem(RATING_ON_KEY, ratingOn ? "1" : "0");
+      }
+      if (typeof paintRatingPill === "function") paintRatingPill();
+      if (typeof applyRatingGridVisibility === "function") applyRatingGridVisibility();
+    }
+    syncPipState();
+  });
+
   const volumeBtn = doc.createElement("button");
   volumeBtn.type = "button";
   volumeBtn.id = "pip-volume-btn";
@@ -1266,7 +1383,7 @@ function buildPipLayout(doc) {
   volOverlay.append(volMuteBtn, volRange);
   if (progressWrap) progressWrap.appendChild(volOverlay);
 
-  controls.append(prev, toggle, next, shuffleBtn, filterBtn, previewBtn, volumeBtn, trackListBtn);
+  controls.append(prev, toggle, next, shuffleBtn, filterBtn, previewBtn, ratingBtn, volumeBtn, trackListBtn);
   topSection.append(controls, progressRow);
   syncVolUi();
 
@@ -1279,6 +1396,7 @@ function buildPipLayout(doc) {
   doc.body.appendChild(root);
 
   bindTrackListCoverTriggers(doc);
+  if (typeof paintRatingPill === "function") paintRatingPill();
 }
 
 function syncPipState() {
@@ -1367,6 +1485,14 @@ function syncPipState() {
   if (pipPreview) {
     pipPreview.classList.toggle("active", previewMode);
   }
+
+  const pipRatingBtn = doc.getElementById("pip-rating-btn");
+  if (pipRatingBtn && typeof ratingOn !== "undefined") {
+    pipRatingBtn.classList.toggle("active", ratingOn);
+    pipRatingBtn.classList.toggle("on", ratingOn);
+  }
+
+  if (typeof paintRatingPill === "function") paintRatingPill();
 
   const pipTrackListBtn = doc.getElementById("pip-track-list-btn");
   if (pipTrackListBtn) {
