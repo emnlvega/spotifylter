@@ -7847,6 +7847,50 @@ function paintToolsBadge() {
   }
 }
 
+function bindLongPressToggle(btn, states, onAction) {
+  let index = 0;
+  let timer = null;
+  let longPressed = false;
+  const delay = 500;
+  const applyState = () => {
+    const state = states[index];
+    btn.innerHTML = state.html;
+    btn.dataset.mode = state.mode;
+  };
+  const clearTimer = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+  applyState();
+  btn.addEventListener("pointerdown", () => {
+    longPressed = false;
+    clearTimer();
+    timer = setTimeout(() => {
+      longPressed = true;
+      index = (index + 1) % states.length;
+      applyState();
+    }, delay);
+  });
+  btn.addEventListener("pointerup", () => {
+    clearTimer();
+  });
+  btn.addEventListener("pointerleave", () => {
+    clearTimer();
+  });
+  btn.addEventListener("pointercancel", () => {
+    clearTimer();
+  });
+  btn.addEventListener("click", () => {
+    if (longPressed) {
+      longPressed = false;
+      return;
+    }
+    onAction(states[index].mode);
+  });
+}
+
 function buildAuthBox() {
   el.auth.innerHTML = "";
   const logo = document.createElement("span");
@@ -7906,8 +7950,15 @@ function buildAuthBox() {
   importBtn.type = "button";
   importBtn.className = "outline-btn-scndry";
   importBtn.style.cssText = "flex:0 0 auto;margin:0;border-top-left-radius:0;border-bottom-left-radius:0;border-left:none;border-top-color:var(--scndr1);border-right-color:var(--scndr1);border-bottom-color:var(--scndr1);";
-  importBtn.innerHTML = '<i class="fa-solid fa-file-import"></i><span>Import Data</span>';
-  importBtn.addEventListener("click", () => {
+  const dataTransferStates = [
+    { mode: "import", html: '<i class="fa-solid fa-file-import"></i><span>Import Data</span>' },
+    { mode: "export", html: '<i class="fa-solid fa-file-export"></i><span>Export Data</span>' }
+  ];
+  bindLongPressToggle(importBtn, dataTransferStates, mode => {
+    if (mode === "export") {
+      exportDiagnosticsBundle();
+      return;
+    }
     importDiagnosticsBundle(() => {
       location.reload();
     });
