@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.29d"
+const VERSION_NUMBER = "v1.29e"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -7849,7 +7849,7 @@ function paintToolsBadge() {
 
 function buildAuthBox() {
   el.auth.innerHTML = "";
-    const logo = document.createElement("span");
+  const logo = document.createElement("span");
   logo.className = "auth-logo";
   logo.innerHTML = LOGO_SVG;
   const h2 = document.createElement("h2");
@@ -7889,25 +7889,36 @@ function buildAuthBox() {
   loginBtn.type = "button";
   loginBtn.className = "auth-login";
   loginBtn.innerHTML = '<i class="fa-brands fa-spotify"></i><span>Log in with Spotify</span>';
-  const tokenDetails = document.createElement("details");
-  tokenDetails.className = "auth-help";
-  const tokenSummary = document.createElement("summary");
-  tokenSummary.textContent = "Advanced: paste an access token";
-  const tokenInput = document.createElement("input");
-  tokenInput.id = "token-input";
-  tokenInput.type = "password";
-  tokenInput.placeholder = "Access token or JSON";
-  const tokenBtn = document.createElement("button");
-  tokenBtn.id = "token-btn";
-  tokenBtn.type = "button";
-  tokenBtn.textContent = "Use token";
-  tokenDetails.append(tokenSummary, tokenInput, tokenBtn);
-  el.auth.append(logo, h2, sub, label, clientInput, help, redirectLabel, redirect, loginBtn, tokenDetails);
+  const offlineGroup = document.createElement("div");
+  offlineGroup.style.cssText = "display:flex;align-items:stretch;width:100%;gap:0;box-sizing:border-box;";
+  const offlineBtn = document.createElement("button");
+  offlineBtn.id = "offline-start-btn";
+  offlineBtn.type = "button";
+  offlineBtn.className = "button-scndry";
+  offlineBtn.style.cssText = "flex:1 1 0;min-width:0;margin:0;box-sizing:border-box;border-top-right-radius:0;border-bottom-right-radius:0;border-right:none;";
+  offlineBtn.innerHTML = '<i class="fa-solid fa-wifi-slash"></i><span>Start in offline mode</span>';
+  offlineBtn.addEventListener("click", () => {
+    localStorage.setItem("sp_offline", "1");
+    location.reload();
+  });
+  const importBtn = document.createElement("button");
+  importBtn.id = "auth-import-btn";
+  importBtn.type = "button";
+  importBtn.className = "outline-btn-scndry";
+  importBtn.style.cssText = "flex:0 0 auto;margin:0;border-top-left-radius:0;border-bottom-left-radius:0;border-left:none;border-top-color:var(--scndr1);border-right-color:var(--scndr1);border-bottom-color:var(--scndr1);";
+  importBtn.innerHTML = '<i class="fa-solid fa-file-import"></i><span>Import Data</span>';
+  importBtn.addEventListener("click", () => {
+    importDiagnosticsBundle(() => {
+      location.reload();
+    });
+  });
+  offlineGroup.append(offlineBtn, importBtn);
+  el.auth.append(logo, h2, sub, label, clientInput, help, redirectLabel, redirect, loginBtn, offlineGroup);
   el.clientId = clientInput;
   el.redirect = redirect;
   el.login = loginBtn;
-  el.token = tokenInput;
-  el.tokenBtn = tokenBtn;
+  el.offlineBtn = offlineBtn;
+  el.authImportBtn = importBtn;
 }
 
 function apiLog() {

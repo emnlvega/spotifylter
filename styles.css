@@ -240,7 +240,31 @@ button {
   background: var(--primaryGrad);
   border: 1px solid var(--accent);
   border-radius: var(--r-sm);
-  padding: 8px 14px;
+
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast), transform var(--fast);
+}
+
+button:hover {
+  background: var(--backgroundGrad);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast), transform var(--fast);
+}
+
+.button-scndry {
+  background: var(--secondaryGrad);
+  border: 1px solid var(--scndry1);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast), transform var(--fast);
+}
+
+.button-scndry:hover {
+  background: var(--backgroundGrad);
+  border: 1px solid var(--scndry1);
+  border-radius: var(--r-sm);
   cursor: pointer;
   transition: background var(--fast), border-color var(--fast), transform var(--fast);
 }
@@ -3272,3 +3296,9 @@ body.pip-body {
   flex-shrink: 0;
 }
 
+
+
+#auth-import-btn,
+#auth-import-btn:hover {
+  padding: 8px 16px;
+}
