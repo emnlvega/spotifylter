@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.28"
+const VERSION_NUMBER = "v1.29"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -79,6 +79,8 @@ let lastState = null;
 let progressTimer = null;
 let shuffleOn = localStorage.getItem("sp_shuffle") === "1";
 let shuffleQueue = [];
+let shuffleHistory = [];
+let shufflePos = -1;
 let hideOnSkip = localStorage.getItem("sp_hide_on_skip") !== "0";
 let pendingTrackUri = null;
 let pendingTrackUriAt = 0;
@@ -995,7 +997,55 @@ async function ensureIdentity(token) {
 const PLAYLIST_INDEX_CACHE_KEY = "sp_playlist_index_v1";
 const PLAYLIST_INDEX_TTL = 24 * 60 * 60 * 1000;
 
+async function resolveTracksByIds(ids, token) {
+  const out = [];
+  for (const id of ids) {
+    const uri = "spotify:track:" + id;
+    const cached = lookupTrack(uri);
+    if (cached && cached.name && !String(cached.name).startsWith("Track ") && cached.artists && cached.artists !== "Unknown") {
+      out.push({
+        uri: cached.uri || uri,
+        name: cached.name,
+        artists: cached.artists,
+        durationMs: cached.durationMs || 0,
+        image: cached.image || null,
+        isrc: cached.isrc || null
+      });
+      continue;
+    }
+    let resolved = null;
+    if (!OFFLINE && token) {
+      const res = await fetch(`https://api.spotify.com/v1/tracks/${id}`, {
+        headers: { Authorization: "Bearer " + token }
+      });
+      if (res.ok) {
+        const t = await res.json();
+        if (t && t.name) {
+          resolved = {
+            uri: t.uri || uri,
+            name: t.name,
+            artists: (t.artists || []).map(a => a.name).filter(Boolean).join(", ") || "Unknown",
+            durationMs: t.duration_ms || 0,
+            image: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : null,
+            isrc: t.external_ids && t.external_ids.isrc ? t.external_ids.isrc : null
+          };
+        }
+      }
+    }
+    out.push(resolved || {
+      uri,
+      name: "Track " + id,
+      artists: "Unknown",
+      durationMs: 0,
+      image: null,
+      isrc: null
+    });
+  }
+  return out;
+}
+
 async function ensurePlaylists(token, forceRefresh = false) {
+  const ttl = 7 * 24 * 60 * 60 * 1000;
   if (!forceRefresh) {
     const raw = localStorage.getItem(PLAYLIST_INDEX_CACHE_KEY);
     if (raw) {
@@ -1010,7 +1060,7 @@ async function ensurePlaylists(token, forceRefresh = false) {
   const found = await discoverPlaylists(token);
   localStorage.setItem(PLAYLIST_INDEX_CACHE_KEY, JSON.stringify({
     items: found,
-    expiresAt: Date.now() + PLAYLIST_INDEX_TTL
+    expiresAt: Date.now() + ttl
   }));
   return found;
 }
@@ -1045,84 +1095,6 @@ async function syncAllPlaylistsFromWix(token) {
   return applied;
 }
 
-async function resolvePlaylistData(name, token) {
-  const entry = PLAYLISTS[name];
-  if (!entry || !entry.id) return "none";
-  const local = cache[name];
-  const localComplete = Boolean(local && local.tracks && local.tracks.length && !local.partial);
-  if (local && local.id && hasPending(local.id)) return "local";
-
-  let liveMeta = null;
-  try {
-    const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${entry.id}?fields=snapshot_id`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (metaRes.ok) liveMeta = await metaRes.json();
-  } catch (_) {}
-
-  const liveSnapshot = liveMeta ? liveMeta.snapshot_id : null;
-  const wixKnownSnapshot = window.wixSnapshotMap && window.wixSnapshotMap[entry.id];
-
-  if (localComplete && liveSnapshot && local.snapshot_id === liveSnapshot) {
-    return "local";
-  }
-
-  let wix = null;
-  let wixAt = 0;
-  try {
-const res = await fetch(
-  PLAYLIST_DATA_URL
-    + "?accessToken=" + encodeURIComponent(token)
-    + "&playlistId=" + encodeURIComponent(entry.id)
-);
-if (res.ok) {
-  const json = await res.json();
-  if (!json.error && json.data) {
-    await new Promise(r => setTimeout(r, 10));
-    const parsed = JSON.parse(json.data);
-    if (parsed && Array.isArray(parsed.tracks) && parsed.tracks.length) {
-      wix = parsed;
-      wixAt = Number(parsed.loadedAt) || 0;
-    }
-  }
-}
-  } catch (_) {}
-
-  if (wix && liveSnapshot && wix.snapshot_id === liveSnapshot) {
-    cache[name] = {
-      id: entry.id,
-      label: wix.label || entry.label,
-      image: wix.image || null,
-      loadedAt: wixAt,
-      total: wix.total || wix.tracks.length,
-      tracks: wix.tracks,
-      snapshot_id: wix.snapshot_id || null,
-    };
-    writeCache();
-    return "wix";
-  }
-
-  if (localComplete && Number(local.loadedAt || 0) >= wixAt) {
-    return "local";
-  }
-
-  if (wix) {
-    cache[name] = {
-      id: entry.id,
-      label: wix.label || entry.label,
-      image: wix.image || null,
-      loadedAt: wixAt,
-      total: wix.total || wix.tracks.length,
-      tracks: wix.tracks,
-      snapshot_id: wix.snapshot_id || null,
-    };
-    writeCache();
-    return "wix";
-  }
-
-  return "none";
-}
 
 async function validateToken(token) {
   const res = await fetch("https://api.spotify.com/v1/me", {
@@ -1799,12 +1771,17 @@ async function syncPlaylist(name, token) {
   const entry = cache[name] || PLAYLISTS[name];
   if (entry && entry.local) return false;
   const currentEntry = cache[name];
-  if (!currentEntry || !currentEntry.id) {
+  if (!currentEntry || !currentEntry.id || !Array.isArray(currentEntry.tracks) || !currentEntry.tracks.length || currentEntry.partial) {
     await loadPlaylist(name, token);
     return true;
   }
   if (hasPending(currentEntry.id)) {
-    console.log("[data] sync skip", name, "pending exists");
+    return false;
+  }
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const checkKey = "sp_snap_check_" + currentEntry.id;
+  const lastCheck = Number(localStorage.getItem(checkKey) || 0);
+  if (currentEntry.snapshot_id && (Date.now() - lastCheck < weekMs)) {
     return false;
   }
   const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${currentEntry.id}`, {
@@ -1813,6 +1790,7 @@ async function syncPlaylist(name, token) {
   });
   if (!metaRes.ok) throw new Error("ERROR meta " + name + " " + metaRes.status);
   const meta = await metaRes.json();
+  localStorage.setItem(checkKey, String(Date.now()));
 
   if (currentEntry.snapshot_id && meta.snapshot_id === currentEntry.snapshot_id) {
     currentEntry.loadedAt = Date.now();
@@ -1928,42 +1906,37 @@ async function applyPlaylistFromWix(name, token) {
   }
 }
 
-async function syncAllPlaylistsFromWix(token) {
-  const res = await fetch(PLAYLIST_DATA_INDEX_URL + "?accessToken=" + encodeURIComponent(token));
-  if (!res.ok) return 0;
-  const json = await res.json();
-  if (json.error) return 0;
-  const items = json.items || [];
-  if (!items.length) return 0;
-  const byId = {};
-  for (const [name, entry] of Object.entries(PLAYLISTS)) byId[entry.id] = name;
-  let applied = 0;
-  for (const item of items) {
-    const name = byId[item.playlistId];
-    if (!name) continue;
-    const local = cache[name];
-    const localAt = local && !local.partial ? Number(local.loadedAt) || 0 : 0;
-    const wixAt = Number(item.loadedAt) || 0;
-    if (wixAt <= localAt) continue;
-    if (await applyPlaylistFromWix(name, token)) applied++;
-  }
-  return applied;
-}
 
 async function resolvePlaylistData(name, token) {
   const entry = PLAYLISTS[name];
-  if (!entry || !entry.id) {
-    console.log("[data] resolve", name, "no playlist id");
-    return "none";
-  }
+  if (!entry || !entry.id) return "none";
   const local = cache[name];
   const localComplete = Boolean(local && local.tracks && local.tracks.length && !local.partial);
-  if (local && local.id && hasPending(local.id)) {
-    console.log("[data] resolve", name, "-> pending wins, using local");
+  if (local && local.id && hasPending(local.id)) return "local";
+
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const checkKey = "sp_snap_check_" + entry.id;
+  const lastCheck = Number(localStorage.getItem(checkKey) || 0);
+  const shouldCheckSnap = !localComplete || !local.snapshot_id || (Date.now() - lastCheck >= weekMs);
+
+  let liveSnapshot = null;
+  if (shouldCheckSnap && token) {
+    try {
+      const metaRes = await fetch(`https://api.spotify.com/v1/playlists/${entry.id}?fields=snapshot_id`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (metaRes.ok) {
+        const liveMeta = await metaRes.json();
+        liveSnapshot = liveMeta ? liveMeta.snapshot_id : null;
+        localStorage.setItem(checkKey, String(Date.now()));
+      }
+    } catch (_) {}
+  }
+
+  if (localComplete && (!liveSnapshot || local.snapshot_id === liveSnapshot)) {
     return "local";
   }
-  const localAt = localComplete ? Number(local.loadedAt) || 0 : 0;
-  console.log("[data] resolve", name, "local", localComplete ? (local.tracks.length + " tracks") : "incomplete", localAt ? new Date(localAt).toISOString() : "no date");
 
   let wix = null;
   let wixAt = 0;
@@ -1976,6 +1949,7 @@ async function resolvePlaylistData(name, token) {
     if (res.ok) {
       const json = await res.json();
       if (!json.error && json.data) {
+        await new Promise(r => setTimeout(r, 10));
         const parsed = JSON.parse(json.data);
         if (parsed && Array.isArray(parsed.tracks) && parsed.tracks.length) {
           wix = parsed;
@@ -1983,23 +1957,9 @@ async function resolvePlaylistData(name, token) {
         }
       }
     }
-  } catch (err) {
-    console.warn("[data] wix fetch error", name, err.message);
-  }
-  console.log("[data] resolve", name, "wix", wix ? (wix.tracks.length + " tracks") : "empty", wixAt ? new Date(wixAt).toISOString() : "no date");
+  } catch (_) {}
 
-  if (localComplete && localAt >= wixAt) {
-    if (!wix || wixAt < localAt) {
-      console.log("[data] resolve", name, "-> local wins, pushing to wix");
-      try { await syncPlaylistToWix(name, token); } catch (_) { /* best effort */ }
-    } else {
-      console.log("[data] resolve", name, "-> local wins (equal or newer), wix already up to date");
-    }
-    return "local";
-  }
-
-  if (wix) {
-    console.log("[data] resolve", name, "-> wix wins, applying to local");
+  if (wix && (!liveSnapshot || wix.snapshot_id === liveSnapshot)) {
     cache[name] = {
       id: entry.id,
       label: wix.label || entry.label,
@@ -2013,7 +1973,24 @@ async function resolvePlaylistData(name, token) {
     return "wix";
   }
 
-  console.log("[data] resolve", name, "-> nothing anywhere, will hit API");
+  if (localComplete && Number(local.loadedAt || 0) >= wixAt) {
+    return "local";
+  }
+
+  if (wix) {
+    cache[name] = {
+      id: entry.id,
+      label: wix.label || entry.label,
+      image: wix.image || null,
+      loadedAt: wixAt,
+      total: wix.total || wix.tracks.length,
+      tracks: wix.tracks,
+      snapshot_id: wix.snapshot_id || null,
+    };
+    writeCache();
+    return "wix";
+  }
+
   return "none";
 }
 
@@ -2046,22 +2023,26 @@ function setTracksOpen(open) {
 let playbackSourceName = localStorage.getItem("sp_playback_source") || "";
 
 function getPlaybackSource() {
-  const current = sourceName();
-  if (!playbackSourceName) {
-    playbackSourceName = current;
-    return playbackSourceName;
+  const saved = playbackSourceName || localStorage.getItem("sp_playback_source") || "";
+  if (saved && (PLAYLISTS[saved] || cache[saved])) {
+    return saved;
   }
-  const exists = SOURCE_CANDIDATES.includes(playbackSourceName) || Boolean(PLAYLISTS[playbackSourceName]) || Boolean(cache[playbackSourceName]);
-  if (!exists) {
-    playbackSourceName = current;
+  const cur = typeof sourceName === "function" ? sourceName() : "";
+  if (cur && (PLAYLISTS[cur] || cache[cur])) {
+    return cur;
   }
-  return playbackSourceName;
+  if (Array.isArray(SOURCE_CANDIDATES) && SOURCE_CANDIDATES.length) {
+    return SOURCE_CANDIDATES[0];
+  }
+  return "";
 }
 
 function setPlaybackSource(name) {
-  if (!name) return;
+  if (!name || !(PLAYLISTS[name] || cache[name])) return;
   playbackSourceName = name;
   localStorage.setItem("sp_playback_source", name);
+  paintPlayingFromLabel();
+  renderGrid("source");
 }
 
 async function selectSource(name, play) {
@@ -2072,13 +2053,10 @@ async function selectSource(name, play) {
   localStorage.setItem(SOURCE_KEY, name);
   setTracksOpen(true);
 
-  sourcesCollapsed = true;
-  localStorage.setItem("sp_sources_collapsed", "1");
   const sourcesLabel = document.getElementById("sources-label");
   if (sourcesLabel) sourcesLabel.textContent = sourceName();
   const grid = document.getElementById("source-grid");
   if (grid) {
-    grid.style.display = "none";
     for (const tile of grid.querySelectorAll(".source-tile")) {
       tile.classList.toggle("active", tile.dataset.name === name);
     }
@@ -2596,7 +2574,7 @@ function renderTracks() {
       if (justSelected) return;
       try {
         setPlaybackSource(name);
-        if (shuffleOn) resetShuffleQueue(name, track.uri);
+        resetShuffleQueue(name, track.uri);
         changedPlayingNow();
         const token = await getToken();
         currentTrack = track;
@@ -2768,6 +2746,7 @@ function renderGrid(gridKey = "target") {
   gridEl.style.touchAction = "pan-y";
   const hidden = hiddenGrid(gridKey);
   const cur = currentTrack && currentTrack.uri;
+  const playingSrc = getPlaybackSource();
   const orderedNames = isSource
     ? [...new Set([...gridOrder("source"), ...SOURCE_CANDIDATES])]
     : gridOrder("target");
@@ -2787,6 +2766,9 @@ function renderGrid(gridKey = "target") {
       : "";
     btn.style.position = "relative";
     btn.style.touchAction = "pan-y";
+    if (isSource && name === playingSrc) {
+      btn.style.borderColor = "var(--scndry1)";
+    }
     if (isHidden) btn.classList.add("hidden-tile");
 
     const img = document.createElement("img");
@@ -3081,6 +3063,14 @@ function renderGrid(gridKey = "target") {
       });
     }
 
+    if (isSource && name === playingSrc) {
+      const playingBadge = document.createElement("span");
+      playingBadge.className = "local-badge";
+      playingBadge.textContent = "playing";
+      playingBadge.style.cssText = "position:absolute;bottom:6px;right:6px;z-index:2;font-size:9px;background:var(--action);color:var(--bg);padding:1px 5px;border-radius:4px;letter-spacing:0.04em;";
+      btn.appendChild(playingBadge);
+    }
+
     gridEl.appendChild(btn);
   }
 
@@ -3215,10 +3205,13 @@ async function onAdd(name, btn) {
   try {
     const token = await getToken();
 
+    const stateFresh = lastState && lastState.timestamp && (Date.now() - lastState.timestamp < 15000);
     if (cascading && !already) {
-      playback = await fetchPlaybackState(token);
+      playback = stateFresh && lastState.device
+        ? { paused: Boolean(lastState.paused), device: lastState.device }
+        : await fetchPlaybackState(token);
 
-      if (playback && !playback.paused) {
+      if (playback && !playback.paused && playback.device && playback.device.id) {
         const pauseRes = await fetch(
           "https://api.spotify.com/v1/me/player/pause?device_id=" + encodeURIComponent(playback.device.id),
           {
@@ -3274,7 +3267,7 @@ async function onAdd(name, btn) {
     btn.classList.add("err");
     setFeedback(err.message, true);
   } finally {
-    if (resumeAfter && playback) {
+    if (resumeAfter && playback && playback.device && playback.device.id) {
       try {
         await fetch(
           "https://api.spotify.com/v1/me/player/play?device_id=" + encodeURIComponent(playback.device.id),
@@ -3289,12 +3282,25 @@ async function onAdd(name, btn) {
 }
 
 
+function paintPlayingFromLabel() {
+  const node = document.getElementById("np-playing-from");
+  if (!node) return;
+  const src = getPlaybackSource();
+  const entry = src ? (PLAYLISTS[src] || cache[src]) : null;
+  const label = (entry && entry.label) || src || "";
+  node.style.display = "block";
+  node.style.height = "14px";
+  node.style.minHeight = "14px";
+  node.textContent = label ? "PLAYING FROM " + label : "\u00A0";
+}
+
 function updatePlayerBar(track) {
   if (!track) return;
   el.title.textContent = track.name;
   el.artists.textContent = track.artists || "";
   bindImg(el.art, track.image);
   el.time.textContent = "0:00 / " + formatMs(track.durationMs);
+  paintPlayingFromLabel();
   paintVersionsButton();
   paintRatingPill();
   resetPresets();
@@ -3534,7 +3540,7 @@ function pushRecent(track) {
     image: track.image,
     durationMs: track.durationMs
   });
-  localStorage.setItem("sp_recent", JSON.stringify(list.slice(0, 8)));
+  localStorage.setItem("sp_recent", JSON.stringify(list.slice(0, 9)));
   paintRecentGrid();
 }
 
@@ -4226,11 +4232,23 @@ async function startSession(token) {
   rebuildRatingListsFromCache();
   writeCache();
 
-  try {
-    await syncPull(token);
-  } catch (err) {
-    setFeedback(err.message, true);
+  const lastBootSync = Number(localStorage.getItem("sp_boot_sync_at") || 0);
+  const shouldSyncBoot = Date.now() - lastBootSync >= 24 * 60 * 60 * 1000;
+
+  if (shouldSyncBoot) {
+    try {
+      await syncPull(token);
+    } catch (err) {
+      setFeedback(err.message, true);
+    }
+    try {
+      await syncAllPlaylistsFromWix(token);
+      localStorage.setItem("sp_boot_sync_at", String(Date.now()));
+    } catch (err) {
+      setFeedback(err.message, true);
+    }
   }
+
   try {
     await syncRatingsPull(token);
     rebuildRatingListsFromCache();
@@ -4249,12 +4267,6 @@ async function startSession(token) {
   }
   try {
     await loadPendingFromWix(token);
-  } catch (err) {
-    setFeedback(err.message, true);
-  }
-  try {
-    const applied = await syncAllPlaylistsFromWix(token);
-    if (applied) console.log("[data] boot sync applied", applied, "playlists");
   } catch (err) {
     setFeedback(err.message, true);
   }
@@ -4362,49 +4374,7 @@ async function openManualPlaylist(token) {
         const name = "local: " + baseName;
         const playlistId = "local_" + Date.now();
         const activeToken = token || (!OFFLINE ? await getToken() : "");
-        const tracks = [];
-        for (const id of ids) {
-          const uri = "spotify:track:" + id;
-          const cached = lookupTrack(uri);
-          if (cached && cached.name && !String(cached.name).startsWith("Track ") && cached.artists && cached.artists !== "Unknown") {
-            tracks.push({
-              uri: cached.uri || uri,
-              name: cached.name,
-              artists: cached.artists,
-              durationMs: cached.durationMs || 0,
-              image: cached.image || null,
-              isrc: cached.isrc || null
-            });
-            continue;
-          }
-          let resolved = null;
-          if (!OFFLINE && activeToken) {
-            const res = await fetch(`https://api.spotify.com/v1/tracks/${id}`, {
-              headers: { Authorization: "Bearer " + activeToken }
-            });
-            if (res.ok) {
-              const t = await res.json();
-              if (t && t.name) {
-                resolved = {
-                  uri: t.uri || uri,
-                  name: t.name,
-                  artists: (t.artists || []).map(a => a.name).filter(Boolean).join(", ") || "Unknown",
-                  durationMs: t.duration_ms || 0,
-                  image: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : null,
-                  isrc: t.external_ids && t.external_ids.isrc ? t.external_ids.isrc : null
-                };
-              }
-            }
-          }
-          tracks.push(resolved || {
-            uri,
-            name: "Track " + id,
-            artists: "Unknown",
-            durationMs: 0,
-            image: null,
-            isrc: null
-          });
-        }
+        const tracks = await resolveTracksByIds(ids, activeToken);
         const image = (tracks.find(t => t.image) || {}).image || null;
         PLAYLISTS[name] = { id: playlistId, label: name, image, local: true };
         if (!SOURCE_CANDIDATES.includes(name)) SOURCE_CANDIDATES.push(name);
@@ -4605,6 +4575,8 @@ function resetShuffleQueue(name, exclude) {
     .filter(t => t.uri !== exclude)
     .map(t => t.uri)
     .sort(() => Math.random() - 0.5);
+  shuffleHistory = exclude ? [exclude] : [];
+  shufflePos = shuffleHistory.length - 1;
 }
 
 async function playNextShuffled(hide) {
@@ -4620,9 +4592,49 @@ async function playNextShuffled(hide) {
   const token = !OFFLINE ? await getToken() : "";
   const valid = new Set(tracks.map(t => t.uri));
   shuffleQueue = shuffleQueue.filter(u => valid.has(u));
+  if (shufflePos >= 0 && shufflePos < shuffleHistory.length - 1) {
+    while (shufflePos < shuffleHistory.length - 1) {
+      shufflePos++;
+      const nextUri = shuffleHistory[shufflePos];
+      if (!valid.has(nextUri)) continue;
+      const track = tracks.find(t => t.uri === nextUri);
+      if (!track) continue;
+      try {
+        currentTrack = track;
+        updatePlayerBar(track);
+        await playFromGesture(track, token);
+        renderTracks();
+        highlightTracks();
+        if (previewMode) {
+          previewAbort = true;
+          previewRunning = false;
+          const scheduledUri = track.uri;
+          const expectedSeq = _playingChangeSeq;
+          setTimeout(() => {
+            if (!previewMode || previewRunning || _playingChangeSeq !== expectedSeq) return;
+            if (!currentTrack || currentTrack.uri !== scheduledUri) return;
+            previewAbort = false;
+            if (OFFLINE) runOfflinePreview();
+            else runPreviewForCurrent();
+          }, 650);
+        }
+        return;
+      } catch (err) {
+        if (isUnplayable(err)) continue;
+        currentTrack = original;
+        updatePlayerBar(original);
+        setFeedback(err.message, true);
+        renderTracks();
+        return;
+      }
+    }
+  }
   const tried = new Set();
   while (tried.size < tracks.length) {
-    if (!shuffleQueue.length) resetShuffleQueue(name, original && original.uri);
+    if (!shuffleQueue.length) {
+      const pool = playableTracks(name).filter(t => !original || t.uri !== original.uri);
+      shuffleQueue = pool.map(t => t.uri).sort(() => Math.random() - 0.5);
+    }
     if (!shuffleQueue.length) break;
     const uri = shuffleQueue.shift();
     if (tried.has(uri)) continue;
@@ -4631,6 +4643,11 @@ async function playNextShuffled(hide) {
     if (!track) continue;
     try {
       currentTrack = track;
+      if (shuffleHistory[shufflePos] !== track.uri) {
+        shuffleHistory = shuffleHistory.slice(0, shufflePos + 1);
+        shuffleHistory.push(track.uri);
+        shufflePos = shuffleHistory.length - 1;
+      }
       updatePlayerBar(track);
       await playFromGesture(track, token);
       renderTracks();
@@ -4679,6 +4696,47 @@ async function playAdjacent(dir, hide) {
   changedPlayingNow();
   if (dir === 1 && manualQueue.length) return playFromManualQueue(hide);
   if (shuffleOn && dir === 1) return playNextShuffled(hide);
+  if (shuffleOn && dir === -1 && shufflePos > 0) {
+    const name = getPlaybackSource();
+    const tracks = playableTracks(name);
+    const original = currentTrack;
+    const token = !OFFLINE ? await getToken() : "";
+    while (shufflePos > 0) {
+      shufflePos--;
+      const prevUri = shuffleHistory[shufflePos];
+      const prevTrack = tracks.find(t => t.uri === prevUri);
+      if (!prevTrack) continue;
+      try {
+        currentTrack = prevTrack;
+        updatePlayerBar(prevTrack);
+        await playFromGesture(prevTrack, token);
+        renderTracks();
+        highlightTracks();
+        if (previewMode) {
+          previewAbort = true;
+          previewRunning = false;
+          const scheduledUri = prevTrack.uri;
+          const expectedSeq = _playingChangeSeq;
+          setTimeout(() => {
+            if (!previewMode || previewRunning || _playingChangeSeq !== expectedSeq) return;
+            if (!currentTrack || currentTrack.uri !== scheduledUri) return;
+            previewAbort = false;
+            if (OFFLINE) runOfflinePreview();
+            else runPreviewForCurrent();
+          }, 650);
+        }
+        return;
+      } catch (err) {
+        if (isUnplayable(err)) continue;
+        currentTrack = original;
+        updatePlayerBar(original);
+        setFeedback(err.message, true);
+        renderTracks();
+        highlightTracks();
+        return;
+      }
+    }
+  }
 
   const name = getPlaybackSource();
   const allTracks = queueTracks(name);
@@ -5109,6 +5167,10 @@ function queueUpcoming(count) {
   if (shuffleOn) {
     const tracks = playableTracks(name);
     const byUri = new Map(tracks.map(t => [t.uri, t]));
+    for (let i = shufflePos + 1; i < shuffleHistory.length && out.length < count; i++) {
+      const t = byUri.get(shuffleHistory[i]);
+      if (t && isPlayableTrack(name, t) && !out.some(o => o.uri === t.uri)) out.push(t);
+    }
     for (const uri of shuffleQueue) {
       const t = byUri.get(uri);
       if (t && isPlayableTrack(name, t) && !out.some(o => o.uri === t.uri)) out.push(t);
@@ -5237,7 +5299,15 @@ function paintNpGrid() {
   list.className = "np-grid-list";
   npPanel.appendChild(list);
 
-  const tracks = npView === "queue" ? queueUpcoming(8) : recentList();
+  const curUri = currentPlayingUri();
+const tracks = npView === "queue"
+    ? queueUpcoming(8)
+    : recentList().filter(t => {
+        if (!t) return false;
+        if (curUri && t.uri === curUri) return false;
+        if (currentTrack && sameRecording(t, currentTrack)) return false;
+        return true;
+      }).slice(0, 8);
   if (!tracks.length) {
     const empty = document.createElement("p");
     empty.className = "recent-empty";
@@ -5245,7 +5315,8 @@ function paintNpGrid() {
     list.appendChild(empty);
     return;
   }
-  for (const t of tracks) {
+  for (let i = 0; i < tracks.length; i++) {
+    const t = tracks[i];
     const card = document.createElement("div");
     card.className = "track";
     card.dataset.uri = t.uri;
@@ -5256,12 +5327,12 @@ function paintNpGrid() {
     meta.innerHTML = `<p class="track-name"></p><p class="track-artists"></p>`;
     meta.querySelector(".track-name").textContent = t.name;
     meta.querySelector(".track-artists").textContent = t.artists;
-    if (npView === "queue" && t === tracks[0]) {
+    if (npView === "queue" && i === 0) {
       const badge = document.createElement("span");
       badge.className = "np-next-badge";
       badge.textContent = "next";
       card.appendChild(badge);
-    } else if (npView === "recent" && t === tracks[1]) {
+    } else if (npView === "recent" && i === 0) {
       const badge = document.createElement("span");
       badge.className = "np-next-badge";
       badge.textContent = "previous";
@@ -5293,18 +5364,18 @@ function paintNpGrid() {
       if (justSelected) return;
       try {
         const token = !OFFLINE ? await getToken() : "";
-        currentTrack = track;
-        updatePlayerBar(track);
+        currentTrack = t;
+        updatePlayerBar(t);
         changedPlayingNow();
         previewRunning = false;
         previewAbort = false;
-        await playFromGesture(track, token);
+        await playFromGesture(t, token);
         renderTracks();
         highlightTracks();
         markGridHasTrack();
         paintVersionsButton();
         if (previewMode) {
-          const scheduledUri = track.uri;
+          const scheduledUri = t.uri;
           const expectedSeq = _playingChangeSeq;
           setTimeout(() => {
             if (!previewMode || _playingChangeSeq !== expectedSeq) return;
@@ -5741,17 +5812,13 @@ function buildPlayer() {
   artWrap.addEventListener("click", ev => {
     if (ev.target.closest("#np-rating-pill")) return;
     clearTimeout(artClickTimer);
-    artClickTimer = setTimeout(() => {
+    artClickTimer = setTimeout(async () => {
+      const playSrc = getPlaybackSource();
+      if (playSrc && sourceName() !== playSrc) {
+        await selectSource(playSrc, false);
+      }
       scrollMainTrackListToCurrent();
     }, 200);
-  });
-  artWrap.addEventListener("dblclick", ev => {
-    if (ev.target.closest("#np-rating-pill")) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    clearTimeout(artClickTimer);
-    artClickTimer = null;
-    toggleTrackListPip(false);
   });
   artWrap.appendChild(el.art);
 
@@ -5782,6 +5849,11 @@ function buildPlayer() {
   artWrap.appendChild(ratingPill);
 
   center.append(artWrap, titleRow, el.artists, progressWrap, el.time);
+const playingFrom = document.createElement("div");
+  playingFrom.id = "np-playing-from";
+  playingFrom.style.cssText = "display:block;flex:0 0 14px;flex-shrink:0;width:100%;height:14px;min-height:14px;line-height:14px;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--scndry2);text-align:center;margin:0 0 6px;";
+  paintPlayingFromLabel();
+  center.append(playingFrom, artWrap, titleRow, el.artists, progressWrap, el.time);
   const controls = document.createElement("div");
   controls.className = "np-controls";
   const prev = document.createElement("button");
@@ -5844,22 +5916,18 @@ function buildPlayer() {
           paintVersionsButton();
         }
       }
-      const real = await fetchPlaybackState(token);
-      const isPlaying = real ? !real.paused : (lastState ? !lastState.paused : false);
-      if (isPlaying) {
-        await fetch("https://api.spotify.com/v1/me/player/pause", {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}` } }); if (lastState) { lastState.position = lastState.paused ? lastState.position : lastState.position + (Date.now() - lastState.timestamp); lastState.timestamp = Date.now(); lastState.paused = true; startProgress(lastState); } const toggleIcon = document.querySelector("#player-view .np-toggle i"); if (toggleIcon) toggleIcon.className = "fa-solid fa-play"; syncArtAuraPlaying(false); return; } if (real && currentTrack) { const realRef = { uri: real.uri, name: real.name, artists: real.artists, durationMs: real.durationMs }; if (!sameRecording(currentTrack, realRef)) { await playFromGesture(currentTrack, token); updatePlayerBar(currentTrack); highlightTracks(); return; } } else if (currentTrack && !real) { await playFromGesture(currentTrack, token); updatePlayerBar(currentTrack); highlightTracks(); return; } await fetch("https://api.spotify.com/v1/me/player", { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ device_ids: [deviceId], play: true })
-      });
-      if (lastState) {
-        lastState.timestamp = Date.now();
-        lastState.paused = false;
-        startProgress(lastState);
+      const state = await player.getCurrentState();
+      if (!state && currentTrack) {
+        await playFromGesture(currentTrack, token);
+        updatePlayerBar(currentTrack);
+        highlightTracks();
+        return;
       }
-      const toggleIcon = document.querySelector("#player-view .np-toggle i");
-      if (toggleIcon) toggleIcon.className = "fa-solid fa-pause";
-      syncArtAuraPlaying(true);
+      if (state && !state.paused) {
+        await player.pause();
+      } else {
+        await player.resume();
+      }
     } catch (err) {
       setFeedback(err.message, true);
     }
@@ -5869,7 +5937,7 @@ function buildPlayer() {
   queueBtn.type = "button";
   queueBtn.id = "np-queue-btn";
   queueBtn.className = "np-shuffle";
-  queueBtn.innerHTML = '<i class="fa-solid fa-list-ul"></i>';
+  queueBtn.innerHTML = '<i class="fa-solid fa-list-ol"></i>';
   queueBtn.title = "Queue / Recent";
   queueBtn.addEventListener("click", toggleNpPanel);
 
@@ -6040,6 +6108,7 @@ function buildPlayer() {
     localStorage.setItem("sp_shuffle", shuffleOn ? "1" : "0");
     if (shuffleOn) resetShuffleQueue(sourceName(), currentTrack && currentTrack.uri);
     paintRnd();
+    refreshNpPanel();
   });
   controls.append(prev, toggle, filterBtn, rnd, queueBtn, previewBtn, volumeBtn, next);
   center.append(seeks);
@@ -6665,10 +6734,10 @@ async function openDiagnosticsModal() {
   const hiddenTotal = Object.values(hiddenObj).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
   const opsCursor = localStorage.getItem(OPS_CURSOR_KEY) || "none";
 
-  const summaryGrid = document.createElement("div");
+const summaryGrid = document.createElement("div");
   summaryGrid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);font-size:11px;";
   const metrics = [
-    ["API (15M / 1H / 3H)", `${stats.m15} / ${stats.h1} / ${stats.h3}`],
+    ["API (30S / 1M / 5M)", `${stats.s30} / ${stats.m1} / ${stats.m5}`],
     ["API HOLD", holdMs > 0 ? `${Math.ceil(holdMs / 1000)}s` : "NONE"],
     ["CACHED PLAYLISTS", `${cacheKeys.length} / ${totalCachedTracks} TRK`],
     ["CACHE SIZE", `${(localBytes / 1024).toFixed(1)} KB`],
@@ -7020,6 +7089,7 @@ async function reloadGridPlaylists() {
 async function reconcileDevice() {
   const last = Number(localStorage.getItem("sp_last_reconcile") || 0);
   if (Date.now() - last < 120000) return;
+  if (player && deviceId && lastState && lastState.timestamp && (Date.now() - lastState.timestamp < 120000)) return;
   localStorage.setItem("sp_last_reconcile", String(Date.now()));
   const token = await getToken();
   const api = await fetchPlaybackState(token);
@@ -7054,6 +7124,7 @@ async function reconcileDevice() {
     position: api.position,
     duration: api.durationMs,
     timestamp: api.timestamp,
+    device: api.device,
     track_window: { current_track: { uri: api.uri } }
   };
   startProgress(lastState);
@@ -7364,59 +7435,7 @@ async function openLocalPlaylistTool(token) {
         try {
             const playlistName = "local: " + (nameInput.value.trim() || "Playlist");
             const playlistId = "local_" + Date.now();
-            const tracks = [];
-
-            for (let i = 0; i < ids.length; i += 50) {
-                const chunk = ids.slice(i, i + 50);
-                const missingIds = [];
-                const chunkTracks = [];
-
-                for (const id of chunk) {
-                    let track = lookupTrack("spotify:track:" + id);
-                    if (track) {
-                        chunkTracks.push(track);
-                    } else {
-                        missingIds.push(id);
-                    }
-                }
-
-                if (missingIds.length > 0) {
-                    try {
-                        const res = await fetch(`https://api.spotify.com/v1/tracks?ids=${missingIds.join(",")}`, {
-                            headers: { Authorization: "Bearer " + token }
-                        });
-                        if (res.ok) {
-                            const data = await res.json();
-                            for (const t of (data.tracks || [])) {
-                                if (!t) continue;
-                                const formatted = {
-                                    uri: t.uri,
-                                    name: t.name,
-                                    artists: (t.artists || []).map(a => a.name).join(", "),
-                                    durationMs: t.duration_ms,
-                                    image: t.album && t.album.images && t.album.images.length ? t.album.images[0].url : null,
-                                    isrc: t.external_ids && t.external_ids.isrc ? t.external_ids.isrc : null
-                                };
-                                chunkTracks.push(formatted);
-                            }
-                        }
-                    } catch (_) {}
-                }
-
-                for (const id of chunk) {
-                    if (!chunkTracks.some(t => t.uri.includes(id))) {
-                        chunkTracks.push({
-                            uri: "spotify:track:" + id,
-                            name: "Track " + id,
-                            artists: "Unknown",
-                            durationMs: 0,
-                            image: null,
-                            isrc: null
-                        });
-                    }
-                }
-                tracks.push(...chunkTracks);
-            }
+            const tracks = await resolveTracksByIds(ids, token);
 
             PLAYLISTS[playlistName] = { id: playlistId, label: playlistName, image: tracks[0] ? tracks[0].image : null, local: true };
             if (!SOURCE_CANDIDATES.includes(playlistName)) SOURCE_CANDIDATES.push(playlistName);
@@ -7897,11 +7916,11 @@ function apiLog() {
 
 function apiStats() {
   const now = Date.now();
-  const log = apiLog().filter(t => t > now - 3 * 60 * 60 * 1000);
+  const log = apiLog().filter(t => t > now - 5 * 60 * 1000);
   return {
-    m15: log.filter(t => t > now - 15 * 60 * 1000).length,
-    h1: log.filter(t => t > now - 60 * 60 * 1000).length,
-    h3: log.length
+    s30: log.filter(t => t > now - 30 * 1000).length,
+    m1: log.filter(t => t > now - 60 * 1000).length,
+    m5: log.length
   };
 }
 
@@ -8628,9 +8647,9 @@ async function boot() {
     renderTracks();
   });
 
-  songsFilters.append(filterWrap, hiddenSelect, hiddenStageGroup, sortSelect, queueToggle);
+  songsFilters.append(filterWrap, hiddenSelect, hiddenStageGroup, sortSelect);
 
-  songsTools.append(playSourceBtn, twoDotsBtn, threeDotsBtn, unhideBtn, undoBtn, trackListWinBtn, reverseBtn, spacer, songsZoom);
+  songsTools.append(playSourceBtn, twoDotsBtn, threeDotsBtn, unhideBtn, undoBtn, trackListWinBtn, reverseBtn, queueToggle, spacer, songsZoom);
 
   const songsHeader = document.createElement("div");
   songsHeader.className = "songs-header";

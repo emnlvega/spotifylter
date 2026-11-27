@@ -336,7 +336,7 @@ select:focus, input:focus, textarea:focus {
 
 .zoom-group i {
   font-size: 11px;
-  color: var(--action);
+  color: var(--scndry1);
   margin-right: 2px;
 }
 
@@ -511,7 +511,7 @@ select:focus, input:focus, textarea:focus {
   font-size: 24px;
   font-weight: 700;
   text-align: center;
-  line-height: 1.25;
+  line-height: 1;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -588,7 +588,7 @@ select:focus, input:focus, textarea:focus {
   border: 2px solid var(--accent);
   box-shadow: none;
   position: absolute;
-  top: calc(var(--np-art) + 20px);
+  top: calc(var(--np-art) + 50px);
   transform: translateY(-120%);
   height: 270px;
   min-width: 50px;
@@ -852,7 +852,7 @@ input[type="range"]::-moz-range-thumb {
   #offline-mode-badge { width: 100vw; }
 #player-view .np-controls .np-nav {
     position: absolute;
-    top: 125px; 
+    top: 159px; 
     transform: translateY(-50%);
     height: 240px;
     min-width: 50px;
@@ -3146,8 +3146,7 @@ body.pip-body {
   padding: 0;
   border-radius: 50%;
   background: var(--darkGrad);
-  border: 2px solid transparent;
-  opacity: 1;
+  border: 2px solid color-mix(in srgb, var(--white) 10%, transparent);
   cursor: pointer;
 }
 

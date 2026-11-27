@@ -1087,13 +1087,21 @@ async function openTrackListPipToCurrent() {
   }
 }
 
+async function openPlayingSourcePlaylist() {
+  const playSrc = typeof getPlaybackSource === "function" ? getPlaybackSource() : "";
+  if (playSrc && typeof sourceName === "function" && typeof selectSource === "function" && sourceName() !== playSrc) {
+    await selectSource(playSrc, false);
+  }
+  await openTrackListPipToCurrent();
+}
+
 function bindTrackListCoverTriggers(doc) {
   const pipArtWrap = doc && doc.querySelector(".pip-art-wrap");
   if (pipArtWrap && !pipArtWrap.dataset.trackListBound) {
     pipArtWrap.dataset.trackListBound = "1";
     pipArtWrap.style.cursor = "pointer";
     pipArtWrap.addEventListener("click", () => {
-      openTrackListPipToCurrent();
+      openPlayingSourcePlaylist();
     });
   }
 
@@ -1102,7 +1110,7 @@ function bindTrackListCoverTriggers(doc) {
     mainArtWrap.dataset.trackListBound = "1";
     mainArtWrap.style.cursor = "pointer";
     mainArtWrap.addEventListener("click", () => {
-      openTrackListPipToCurrent();
+      openPlayingSourcePlaylist();
     });
   }
 }
@@ -1286,7 +1294,7 @@ function buildPipLayout(doc) {
   ratingBtn.type = "button";
   ratingBtn.id = "pip-rating-btn";
   ratingBtn.className = "np-shuffle pip-ctrl-btn";
-  ratingBtn.textContent = "●";
+  ratingBtn.textContent = "●/●";
   ratingBtn.title = "Rating lists";
   ratingBtn.addEventListener("click", () => {
     if (typeof ratingOn !== "undefined") {
@@ -1312,9 +1320,9 @@ function buildPipLayout(doc) {
   trackListBtn.id = "pip-track-list-btn";
   trackListBtn.className = "np-shuffle pip-ctrl-btn" + (trackListPipWindow && !trackListPipWindow.closed ? " active" : "");
   trackListBtn.innerHTML = '<i class="fa-solid fa-list"></i>';
-  trackListBtn.title = "Track list";
+  trackListBtn.title = "Open playing playlist";
   trackListBtn.addEventListener("click", () => {
-    toggleTrackListPip();
+    openPlayingSourcePlaylist();
   });
 
   const progressRow = buildPipProgressRow();
