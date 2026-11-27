@@ -7,12 +7,41 @@ const PIP_HEIGHT_KEY = "sp_pip_height";
 const PIP_SHOW_META_KEY = "sp_pip_show_meta";
 const PIP_SHOW_PROGRESS_KEY = "sp_pip_show_progress";
 
-function getPipConfig() {
-  const w = parseInt(localStorage.getItem(PIP_WIDTH_KEY) || "600", 10);
-  const h = parseInt(localStorage.getItem(PIP_HEIGHT_KEY) || "180", 10);
+const PIP_DEFAULT_SIZE = Object.freeze({
+  width: 600,
+  height: 180
+});
+
+function normalizePipDimensions(width, height) {
+  const w = Number(width);
+  const h = Number(height);
   return {
-    width: Number.isFinite(w) && w >= 240 ? w : 600,
-    height: Number.isFinite(h) && h >= 120 ? h : 180,
+    width: Number.isFinite(w) && w >= 240 ? Math.round(w) : PIP_DEFAULT_SIZE.width,
+    height: Number.isFinite(h) && h >= 120 ? Math.round(h) : PIP_DEFAULT_SIZE.height
+  };
+}
+
+function persistPipWindowDimensions(win) {
+  if (!win || win.closed) return;
+  const current = getPipConfig();
+  const next = normalizePipDimensions(
+    win.innerWidth || win.outerWidth,
+    win.innerHeight || win.outerHeight
+  );
+  savePipConfig({
+    ...current,
+    width: next.width,
+    height: next.height
+  });
+}
+
+function getPipConfig() {
+  const rawW = parseInt(localStorage.getItem(PIP_WIDTH_KEY) || "", 10);
+  const rawH = parseInt(localStorage.getItem(PIP_HEIGHT_KEY) || "", 10);
+  const dims = normalizePipDimensions(rawW, rawH);
+  return {
+    width: dims.width,
+    height: dims.height,
     showMeta: localStorage.getItem(PIP_SHOW_META_KEY) !== "0",
     showProgress: localStorage.getItem(PIP_SHOW_PROGRESS_KEY) !== "0"
   };
@@ -116,18 +145,14 @@ function showPipSettings() {
   resetBtn.type = "button";
   resetBtn.textContent = "Reset";
   resetBtn.addEventListener("click", () => {
-    curWidth = 600;
-    curHeight = 180;
+    curWidth = PIP_DEFAULT_SIZE.width;
+    curHeight = PIP_DEFAULT_SIZE.height;
     curMeta = true;
     curProgress = true;
-    wRow.input.value = "600";
-    hRow.input.value = "180";
-    localStorage.setItem(PIP_WIDTH_KEY, "600");
-    localStorage.setItem(PIP_HEIGHT_KEY, "180");
+    wRow.input.value = String(PIP_DEFAULT_SIZE.width);
+    hRow.input.value = String(PIP_DEFAULT_SIZE.height);
     savePipConfig({ width: curWidth, height: curHeight, showMeta: curMeta, showProgress: curProgress });
     applyPipWindowSize(pipWindow, curWidth, curHeight);
-    panel.remove();
-    showPipSettings();
     syncPipState();
   });
 
@@ -152,6 +177,12 @@ function showPipSettings() {
   host.appendChild(panel);
 }
 
+function enforcePipConfiguredSize(win) {
+  if (!win || win.closed) return;
+  const cfg = getPipConfig();
+  applyPipWindowSize(win, cfg.width, cfg.height);
+}
+
 async function togglePipMode() {
   if (pipWindow && !pipWindow.closed) {
     pipWindow.close();
@@ -173,7 +204,6 @@ async function togglePipMode() {
       width: cfg.width,
       height: cfg.height
     });
-    applyPipWindowSize(pipWindow, cfg.width, cfg.height);
 
     for (const styleSheet of document.styleSheets) {
       try {
@@ -193,6 +223,9 @@ async function togglePipMode() {
 
     buildPipLayout(pipWindow.document);
     syncPipState();
+    enforcePipConfiguredSize(pipWindow);
+    setTimeout(() => enforcePipConfiguredSize(pipWindow), 50);
+    setTimeout(() => enforcePipConfiguredSize(pipWindow), 250);
     pipSyncTimer = setInterval(syncPipState, 200);
 
     pipWindow.addEventListener("pagehide", () => {
@@ -711,7 +744,7 @@ async function toggleTrackListPip(forcePip = false) {
   trackListPipSyncTimer = null;
 
 try {
-    const winW = 600;
+    const winW = PIP_DEFAULT_SIZE.width;
     const winH = 350;
     const hasPip = Boolean(pipWindow && !pipWindow.closed);
     const pipLeft = hasPip

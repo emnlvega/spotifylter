@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.29"
+const VERSION_NUMBER = "v1.29b"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -2796,16 +2796,14 @@ function renderGrid(gridKey = "target") {
       btn.appendChild(badge);
     }
 
-    if (!isSource) {
-      const cachedEntry = cache[name];
-      const isWixSynced = cachedEntry && cachedEntry.tracks && cachedEntry.tracks.length > 0 && !cachedEntry.partial;
-      if (isWixSynced && !entry.local) {
-        const syncedBadge = document.createElement("span");
-        syncedBadge.className = "local-badge";
-        syncedBadge.textContent = "synced";
-        syncedBadge.style.cssText = "position:absolute;bottom:26px;left:6px;z-index:2;font-size:9px;background:rgba(10,13,18,0.85);color:var(--muted);padding:1px 5px;border-radius:4px;letter-spacing:0.04em;";
-        btn.appendChild(syncedBadge);
-      }
+    const cachedEntry = cache[name];
+    const isWixSynced = cachedEntry && cachedEntry.tracks && cachedEntry.tracks.length > 0 && !cachedEntry.partial;
+    if (isWixSynced && !entry.local) {
+      const syncedBadge = document.createElement("span");
+      syncedBadge.className = "local-badge";
+      syncedBadge.textContent = "synced";
+      syncedBadge.style.cssText = "position:absolute;bottom:26px;left:6px;z-index:2;font-size:9px;background:rgba(10,13,18,0.85);color:var(--muted);padding:1px 5px;border-radius:4px;letter-spacing:0.04em;";
+      btn.appendChild(syncedBadge);
     }
 
     if (reorderMode) {
