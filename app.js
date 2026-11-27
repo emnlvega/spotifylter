@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.29c"
+const VERSION_NUMBER = "v1.29d"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -1804,7 +1804,7 @@ async function syncPlaylist(name, token) {
 
 async function syncPlaylistToWix(name, token) {
   const entry = cache[name];
-  if (!entry || !entry.id) return;
+  if (!entry || !entry.id || entry.ratingList) return;
   if (entry.partial) return;
   if (!entry.tracks || !entry.tracks.length) return;
   if (hasPending(entry.id)) {
@@ -1845,6 +1845,21 @@ async function syncPlaylistToWix(name, token) {
   }
 }
 
+async function commitPlaylist(name, token) {
+  const entry = cache[name];
+  if (!entry || !entry.id || entry.ratingList || entry.partial || !entry.tracks || !entry.tracks.length) {
+    console.log("[data] commit skip", name, "nothing to commit");
+    return;
+  }
+  try {
+    await syncPlaylistToWix(name, token);
+  } catch (_) {
+    console.log("[data] commit skip", name, "push failed, keeping ops");
+    return;
+  }
+  await clearOpsForPlaylist(name, token);
+}
+
 async function clearOpsForPlaylist(name, token) {
   const entry = cache[name];
   if (!entry || !entry.id) return;
@@ -1861,20 +1876,6 @@ async function clearOpsForPlaylist(name, token) {
   }
 }
 
-async function commitPlaylist(name, token) {
-  const entry = cache[name];
-  if (!entry || !entry.id || entry.partial || !entry.tracks || !entry.tracks.length) {
-    console.log("[data] commit skip", name, "nothing to commit");
-    return;
-  }
-  try {
-    await syncPlaylistToWix(name, token);
-  } catch (_) {
-    console.log("[data] commit skip", name, "push failed, keeping ops");
-    return;
-  }
-  await clearOpsForPlaylist(name, token);
-}
 
 async function applyPlaylistFromWix(name, token) {
   const entry = PLAYLISTS[name];
@@ -3782,22 +3783,7 @@ function writeRatingListsCache() {
 
 function migrateRatingListsToOwnStorage() {
   ratingListsCache = readRatingListsCache();
-  let cacheChanged = false;
   let listsChanged = false;
-
-  for (const name of [RATING_LIST_2_NAME, RATING_LIST_3_NAME]) {
-    if (cache[name]) {
-      if (!ratingListsCache[name]) {
-        ratingListsCache[name] = { ...cache[name], local: true, ratingList: true };
-        listsChanged = true;
-      }
-      delete cache[name];
-      cacheChanged = true;
-    }
-    if (PLAYLISTS[name]) {
-      delete PLAYLISTS[name];
-    }
-  }
 
   for (const [key, val] of Object.entries(ratingListsCache)) {
     if (key !== RATING_LIST_2_NAME && key !== RATING_LIST_3_NAME) {
@@ -3806,11 +3792,52 @@ function migrateRatingListsToOwnStorage() {
     } else if (val && typeof val === "object") {
       val.local = true;
       val.ratingList = true;
+      cache[key] = { ...val, local: true, ratingList: true };
     }
   }
 
-  if (cacheChanged) writeCache();
   if (listsChanged) writeRatingListsCache();
+  writeCache();
+}
+
+function rebuildRatingListsFromCache() {
+  ratingListsCache = readRatingListsCache();
+  migrateRatingListsToOwnStorage();
+  const map = ratingsMap();
+  const byUri = new Map();
+  for (const entry of Object.values(cache)) {
+    if (!entry || !Array.isArray(entry.tracks)) continue;
+    for (const t of entry.tracks) {
+      if (t && t.uri && !byUri.has(t.uri)) byUri.set(t.uri, t);
+    }
+  }
+  const list2 = ensureRatingListEntry(RATING_LIST_2_NAME, null);
+  const list3 = ensureRatingListEntry(RATING_LIST_3_NAME, null);
+  list2.tracks = [];
+  list3.tracks = [];
+  for (const [uri, r] of Object.entries(map)) {
+    const val = Number(r);
+    if (val !== 2 && val !== 3) continue;
+    const base = byUri.get(uri) || { uri, name: uri, artists: "", durationMs: 0 };
+    if (val === 2) {
+      const item2 = { ...base };
+      list2.tracks.push(item2);
+      if (!list2.image && item2.image) list2.image = item2.image;
+    }
+    if (val === 3) {
+      const item3 = { ...base };
+      list3.tracks.push(item3);
+      if (!list3.image && item3.image) list3.image = item3.image;
+    }
+  }
+  list2.total = list2.tracks.length;
+  list3.total = list3.tracks.length;
+  list2.loadedAt = Date.now();
+  list3.loadedAt = Date.now();
+  cache[RATING_LIST_2_NAME] = { ...list2, local: true, ratingList: true };
+  cache[RATING_LIST_3_NAME] = { ...list3, local: true, ratingList: true };
+  writeRatingListsCache();
+  writeCache();
 }
 
 function ensureRatingListEntry(name, track) {
@@ -3905,49 +3932,6 @@ function getRatingListEntry(name) {
     ratingListsCache = readRatingListsCache();
   }
   return ratingListsCache[name] || null;
-}
-
-function rebuildRatingListsFromCache() {
-  ratingListsCache = readRatingListsCache();
-  migrateRatingListsToOwnStorage();
-  const map = ratingsMap();
-  const byUri = new Map();
-  for (const entry of Object.values(cache)) {
-    if (!entry || !Array.isArray(entry.tracks)) continue;
-    for (const t of entry.tracks) {
-      if (t && t.uri && !byUri.has(t.uri)) byUri.set(t.uri, t);
-    }
-  }
-  for (const entry of Object.values(ratingListsCache)) {
-    if (!entry || !Array.isArray(entry.tracks)) continue;
-    for (const t of entry.tracks) {
-      if (t && t.uri && !byUri.has(t.uri)) byUri.set(t.uri, t);
-    }
-  }
-  const list2 = ensureRatingListEntry(RATING_LIST_2_NAME, null);
-  const list3 = ensureRatingListEntry(RATING_LIST_3_NAME, null);
-  list2.tracks = [];
-  list3.tracks = [];
-  for (const [uri, r] of Object.entries(map)) {
-    const val = Number(r);
-    if (val !== 2 && val !== 3) continue;
-    const base = byUri.get(uri) || { uri, name: uri, artists: "", durationMs: 0 };
-    if (val === 2) {
-      const item2 = { ...base };
-      list2.tracks.push(item2);
-      if (!list2.image && item2.image) list2.image = item2.image;
-    }
-    if (val === 3) {
-      const item3 = { ...base };
-      list3.tracks.push(item3);
-      if (!list3.image && item3.image) list3.image = item3.image;
-    }
-  }
-  list2.total = list2.tracks.length;
-  list3.total = list3.tracks.length;
-  list2.loadedAt = Date.now();
-  list3.loadedAt = Date.now();
-  writeRatingListsCache();
 }
 
 const RATINGS_URL = "https://emnlvega.wixsite.com/my-site-2/_functions/ratings";
@@ -4226,8 +4210,23 @@ async function startSession(token) {
       localStorage.setItem("sp_grid_order", JSON.stringify(pruned));
     } catch (_) {}
   }
+  for (const [name, entry] of Object.entries(cache)) {
+    if (!entry || typeof entry !== "object") continue;
+    if (entry.local && !PLAYLISTS[name]) {
+      PLAYLISTS[name] = {
+        id: entry.id || ("local_" + name),
+        label: entry.label || name,
+        image: entry.image || null,
+        local: true
+      };
+    }
+    if (entry.local && !SOURCE_CANDIDATES.includes(name)) {
+      SOURCE_CANDIDATES.push(name);
+    }
+  }
   SOURCE_CANDIDATES.push(...Object.keys(PLAYLISTS).filter(n => !SOURCE_CANDIDATES.includes(n)));
   rebuildRatingListsFromCache();
+  applyRatingGridVisibility();
   writeCache();
 
   const lastBootSync = Number(localStorage.getItem("sp_boot_sync_at") || 0);
@@ -5914,6 +5913,7 @@ const playingFrom = document.createElement("div");
           paintVersionsButton();
         }
       }
+      const toggleIcon = document.querySelector("#player-view .np-toggle i");
       const state = await player.getCurrentState();
       if (!state && currentTrack) {
         await playFromGesture(currentTrack, token);
@@ -5923,8 +5923,12 @@ const playingFrom = document.createElement("div");
       }
       if (state && !state.paused) {
         await player.pause();
+        if (toggleIcon) toggleIcon.className = "fa-solid fa-play";
+        syncArtAuraPlaying(false);
       } else {
         await player.resume();
+        if (toggleIcon) toggleIcon.className = "fa-solid fa-pause";
+        syncArtAuraPlaying(true);
       }
     } catch (err) {
       setFeedback(err.message, true);
