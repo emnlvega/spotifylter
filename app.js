@@ -1,4 +1,4 @@
-const VERSION_NUMBER = "v1.29b"
+const VERSION_NUMBER = "v1.29c"
 let OFFLINE = localStorage.getItem("sp_offline") === "1";
 const CLIENT_ID = "ERROR";
 const ACCESS_TOKEN = "ERROR";
@@ -8460,6 +8460,7 @@ async function boot() {
 
   const trackListWinBtn = document.createElement("button");
   trackListWinBtn.type = "button";
+  trackListWinBtn.id = "track-list-pip-btn";
   trackListWinBtn.className = "outline-btn-scndry";
   trackListWinBtn.innerHTML = '<i class="fa-solid fa-picture-in-picture"></i>';
   trackListWinBtn.title = "Track list PiP";
@@ -8722,18 +8723,7 @@ async function boot() {
   pipBtn.type = "button";
   pipBtn.id = "pip-mode-btn";
   pipBtn.className = "outline-btn";
-  pipBtn.innerHTML = '<i class="fa-solid fa-picture-in-picture"></i><span> PiP</span>';
-
-  const pipBadge = document.createElement("span");
-  pipBadge.className = "pip-config-badge";
-  pipBadge.setAttribute("role", "button");
-  pipBadge.title = "PiP settings";
-  pipBadge.innerHTML = '<i class="fa-solid fa-gear"></i>';
-  pipBadge.addEventListener("click", ev => {
-    ev.stopPropagation();
-    if (typeof showPipSettings === "function") showPipSettings();
-  });
-  pipBtn.appendChild(pipBadge);
+  pipBtn.innerHTML = '<i class="fa-solid fa-picture-in-picture"></i><span>PiP</span>';
 
   pipBtn.addEventListener("click", () => {
     if (typeof togglePipMode === "function") togglePipMode();

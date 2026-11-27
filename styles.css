@@ -845,7 +845,16 @@ input[type="range"]::-moz-range-thumb {
   display: none;
 }
 
+#pip-mode-btn,
+#track-list-pip-btn {
+  display: inline-flex;
+}
+
 @media (max-width: 720px) {
+  #pip-mode-btn,
+  #track-list-pip-btn {
+    display: none !important;
+  }
   body { padding: 14px; }
   #player-view { padding: 24px 0; }
   #player-view .np-card { padding: 0; }

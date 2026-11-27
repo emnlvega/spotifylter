@@ -8,8 +8,8 @@ const PIP_SHOW_META_KEY = "sp_pip_show_meta";
 const PIP_SHOW_PROGRESS_KEY = "sp_pip_show_progress";
 
 const PIP_DEFAULT_SIZE = Object.freeze({
-  width: 600,
-  height: 180
+  width: 584,
+  height: 138
 });
 
 function normalizePipDimensions(width, height) {
@@ -57,130 +57,22 @@ function savePipConfig(cfg) {
 function applyPipWindowSize(win, width, height) {
   if (!win || win.closed) return;
   try {
-    win.resizeTo(width, height);
+    const padW = Math.max(0, (win.outerWidth || width) - (win.innerWidth || width));
+    const padH = Math.max(0, (win.outerHeight || height) - (win.innerHeight || height));
+    win.resizeTo(width + padW, height + padH);
   } catch (_) {}
 }
 
-function showPipSettings() {
-  const existing = document.getElementById("pip-settings");
-  if (existing) {
-    existing.remove();
-    return;
-  }
-
-  const host = document.getElementById("tool-panel-host") || document.querySelector(".songs-panel")?.parentElement;
-  if (!host) return;
-
-  const cfg = getPipConfig();
-  const panel = document.createElement("div");
-  panel.id = "pip-settings";
-  panel.className = "preview-settings pip-settings";
-  panel.addEventListener("click", e => e.stopPropagation());
-
-  const makeNumberRow = (labelText, initialVal, onChange) => {
-    const row = document.createElement("div");
-    row.className = "preview-setting-row";
-    const lbl = document.createElement("span");
-    lbl.textContent = labelText;
-    const input = document.createElement("input");
-    input.type = "number";
-    input.min = "100";
-    input.max = "1600";
-    input.className = "preview-setting-input";
-    input.value = String(initialVal);
-    input.addEventListener("change", () => onChange(parseInt(input.value, 10)));
-    row.append(lbl, input);
-    return { row, input };
-  };
-
-  let curWidth = cfg.width;
-  let curHeight = cfg.height;
-  let curMeta = cfg.showMeta;
-  let curProgress = cfg.showProgress;
-
-  const wRow = makeNumberRow("Width (px)", curWidth, v => {
-    if (Number.isFinite(v) && v >= 240) curWidth = v;
-  });
-  const hRow = makeNumberRow("Height (px)", curHeight, v => {
-    if (Number.isFinite(v) && v >= 120) curHeight = v;
-  });
-
-  const makeToggleRow = (labelText, state, onToggle) => {
-    const row = document.createElement("div");
-    row.className = "preview-setting-row";
-    const lbl = document.createElement("span");
-    lbl.textContent = labelText;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "skip-toggle" + (state ? " on" : "");
-    const paint = val => {
-      btn.classList.toggle("on", val);
-      btn.innerHTML = val
-        ? '<i class="fa-solid fa-toggle-on"></i><span>ON</span>'
-        : '<i class="fa-solid fa-toggle-off"></i><span>OFF</span>';
-    };
-    paint(state);
-    btn.addEventListener("click", () => {
-      const next = onToggle();
-      paint(next);
-    });
-    row.append(lbl, btn);
-    return row;
-  };
-
-  const metaRow = makeToggleRow("Title & Artist", curMeta, () => {
-    curMeta = !curMeta;
-    return curMeta;
-  });
-
-  const progRow = makeToggleRow("Progress Bar", curProgress, () => {
-    curProgress = !curProgress;
-    return curProgress;
-  });
-
-  const actions = document.createElement("div");
-  actions.className = "tool-actions";
-
-  const resetBtn = document.createElement("button");
-  resetBtn.type = "button";
-  resetBtn.textContent = "Reset";
-  resetBtn.addEventListener("click", () => {
-    curWidth = PIP_DEFAULT_SIZE.width;
-    curHeight = PIP_DEFAULT_SIZE.height;
-    curMeta = true;
-    curProgress = true;
-    wRow.input.value = String(PIP_DEFAULT_SIZE.width);
-    hRow.input.value = String(PIP_DEFAULT_SIZE.height);
-    savePipConfig({ width: curWidth, height: curHeight, showMeta: curMeta, showProgress: curProgress });
-    applyPipWindowSize(pipWindow, curWidth, curHeight);
-    syncPipState();
-  });
-
-  const saveBtn = document.createElement("button");
-  saveBtn.type = "button";
-  saveBtn.className = "tool-create";
-  saveBtn.textContent = "Save";
-  saveBtn.addEventListener("click", () => {
-    const w = parseInt(wRow.input.value, 10);
-    const h = parseInt(hRow.input.value, 10);
-    if (Number.isFinite(w) && w >= 240) curWidth = w;
-    if (Number.isFinite(h) && h >= 120) curHeight = h;
-    savePipConfig({ width: curWidth, height: curHeight, showMeta: curMeta, showProgress: curProgress });
-    applyPipWindowSize(pipWindow, curWidth, curHeight);
-    panel.remove();
-    syncPipState();
-    setFeedback("PiP settings saved (" + curWidth + "x" + curHeight + ")", false);
-  });
-
-  actions.append(resetBtn, saveBtn);
-  panel.append(wRow.row, hRow.row, metaRow, progRow, actions);
-  host.appendChild(panel);
-}
 
 function enforcePipConfiguredSize(win) {
   if (!win || win.closed) return;
   const cfg = getPipConfig();
   applyPipWindowSize(win, cfg.width, cfg.height);
+  if (typeof win.requestAnimationFrame === "function") {
+    win.requestAnimationFrame(() => {
+      applyPipWindowSize(win, cfg.width, cfg.height);
+    });
+  }
 }
 
 async function togglePipMode() {
@@ -223,12 +115,27 @@ async function togglePipMode() {
 
     buildPipLayout(pipWindow.document);
     syncPipState();
-    enforcePipConfiguredSize(pipWindow);
-    setTimeout(() => enforcePipConfiguredSize(pipWindow), 50);
-    setTimeout(() => enforcePipConfiguredSize(pipWindow), 250);
+
+    let resizeAttempts = 0;
+    const maxResizeAttempts = 12;
+    const retryResize = setInterval(() => {
+      resizeAttempts += 1;
+      if (!pipWindow || pipWindow.closed || resizeAttempts > maxResizeAttempts) {
+        clearInterval(retryResize);
+        return;
+      }
+      applyPipWindowSize(pipWindow, cfg.width, cfg.height);
+      const curW = pipWindow.outerWidth || pipWindow.innerWidth;
+      const curH = pipWindow.outerHeight || pipWindow.innerHeight;
+      if (Math.abs(curW - cfg.width) <= 2 && Math.abs(curH - cfg.height) <= 2) {
+        clearInterval(retryResize);
+      }
+    }, 200);
+
     pipSyncTimer = setInterval(syncPipState, 200);
 
     pipWindow.addEventListener("pagehide", () => {
+      clearInterval(retryResize);
       clearInterval(pipSyncTimer);
       pipSyncTimer = null;
       _lastPipGridSignature = "";
