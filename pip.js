@@ -23,33 +23,25 @@ function normalizePipDimensions(width, height) {
 
 function persistPipWindowDimensions(win) {
   if (!win || win.closed) return;
-  const current = getPipConfig();
-  const next = normalizePipDimensions(
-    win.innerWidth || win.outerWidth,
-    win.innerHeight || win.outerHeight
-  );
-  savePipConfig({
-    ...current,
-    width: next.width,
-    height: next.height
-  });
+  localStorage.removeItem("sp_pip_width");
+  localStorage.removeItem("sp_pip_height");
+  applyPipWindowSize(win, PIP_DEFAULT_SIZE.width, PIP_DEFAULT_SIZE.height);
 }
 
 function getPipConfig() {
-  const rawW = parseInt(localStorage.getItem(PIP_WIDTH_KEY) || "", 10);
-  const rawH = parseInt(localStorage.getItem(PIP_HEIGHT_KEY) || "", 10);
-  const dims = normalizePipDimensions(rawW, rawH);
+  localStorage.removeItem("sp_pip_width");
+  localStorage.removeItem("sp_pip_height");
   return {
-    width: dims.width,
-    height: dims.height,
+    width: PIP_DEFAULT_SIZE.width,
+    height: PIP_DEFAULT_SIZE.height,
     showMeta: localStorage.getItem(PIP_SHOW_META_KEY) !== "0",
     showProgress: localStorage.getItem(PIP_SHOW_PROGRESS_KEY) !== "0"
   };
 }
 
 function savePipConfig(cfg) {
-  localStorage.setItem(PIP_WIDTH_KEY, String(cfg.width));
-  localStorage.setItem(PIP_HEIGHT_KEY, String(cfg.height));
+  localStorage.removeItem("sp_pip_width");
+  localStorage.removeItem("sp_pip_height");
   localStorage.setItem(PIP_SHOW_META_KEY, cfg.showMeta ? "1" : "0");
   localStorage.setItem(PIP_SHOW_PROGRESS_KEY, cfg.showProgress ? "1" : "0");
 }
@@ -66,11 +58,10 @@ function applyPipWindowSize(win, width, height) {
 
 function enforcePipConfiguredSize(win) {
   if (!win || win.closed) return;
-  const cfg = getPipConfig();
-  applyPipWindowSize(win, cfg.width, cfg.height);
+  applyPipWindowSize(win, PIP_DEFAULT_SIZE.width, PIP_DEFAULT_SIZE.height);
   if (typeof win.requestAnimationFrame === "function") {
     win.requestAnimationFrame(() => {
-      applyPipWindowSize(win, cfg.width, cfg.height);
+      applyPipWindowSize(win, PIP_DEFAULT_SIZE.width, PIP_DEFAULT_SIZE.height);
     });
   }
 }
@@ -89,12 +80,13 @@ async function togglePipMode() {
   pipSyncTimer = null;
   _lastPipGridSignature = "";
 
-  const cfg = getPipConfig();
+  localStorage.removeItem("sp_pip_width");
+  localStorage.removeItem("sp_pip_height");
 
   try {
     pipWindow = await documentPictureInPicture.requestWindow({
-      width: cfg.width,
-      height: cfg.height
+      width: PIP_DEFAULT_SIZE.width,
+      height: PIP_DEFAULT_SIZE.height
     });
 
     for (const styleSheet of document.styleSheets) {
@@ -116,6 +108,11 @@ async function togglePipMode() {
     buildPipLayout(pipWindow.document);
     syncPipState();
 
+    applyPipWindowSize(pipWindow, PIP_DEFAULT_SIZE.width, PIP_DEFAULT_SIZE.height);
+    const defaultSizeTimer = setTimeout(() => {
+      applyPipWindowSize(pipWindow, PIP_DEFAULT_SIZE.width, PIP_DEFAULT_SIZE.height);
+    }, 150);
+
     let resizeAttempts = 0;
     const maxResizeAttempts = 12;
     const retryResize = setInterval(() => {
@@ -124,10 +121,10 @@ async function togglePipMode() {
         clearInterval(retryResize);
         return;
       }
-      applyPipWindowSize(pipWindow, cfg.width, cfg.height);
+      applyPipWindowSize(pipWindow, PIP_DEFAULT_SIZE.width, PIP_DEFAULT_SIZE.height);
       const curW = pipWindow.outerWidth || pipWindow.innerWidth;
       const curH = pipWindow.outerHeight || pipWindow.innerHeight;
-      if (Math.abs(curW - cfg.width) <= 2 && Math.abs(curH - cfg.height) <= 2) {
+      if (Math.abs(curW - PIP_DEFAULT_SIZE.width) <= 2 && Math.abs(curH - PIP_DEFAULT_SIZE.height) <= 2) {
         clearInterval(retryResize);
       }
     }, 200);
@@ -135,6 +132,7 @@ async function togglePipMode() {
     pipSyncTimer = setInterval(syncPipState, 200);
 
     pipWindow.addEventListener("pagehide", () => {
+      clearTimeout(defaultSizeTimer);
       clearInterval(retryResize);
       clearInterval(pipSyncTimer);
       pipSyncTimer = null;
@@ -650,10 +648,13 @@ async function toggleTrackListPip(forcePip = false) {
   clearInterval(trackListPipSyncTimer);
   trackListPipSyncTimer = null;
 
-try {
-    const winW = PIP_DEFAULT_SIZE.width;
-    const winH = 350;
+  try {
     const hasPip = Boolean(pipWindow && !pipWindow.closed);
+    const pipW = hasPip
+      ? (pipWindow.outerWidth || pipWindow.innerWidth || PIP_DEFAULT_SIZE.width)
+      : PIP_DEFAULT_SIZE.width;
+    const winW = Math.round(pipW);
+    const winH = 350;
     const pipLeft = hasPip
       ? (pipWindow.screenLeft ?? pipWindow.screenX ?? window.screenLeft ?? window.screenX ?? 0)
       : (window.screenLeft ?? window.screenX ?? 0);

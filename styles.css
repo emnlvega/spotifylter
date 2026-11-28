@@ -3177,7 +3177,7 @@ body.pip-body {
   height: 25px;
   min-width: 25px;
   padding: 0;
-  border-radius: 50%;
+  border-radius: 30%;
   background: var(--darkGrad);
   border: 2px solid color-mix(in srgb, var(--white) 10%, transparent);
   cursor: pointer;
@@ -3208,7 +3208,9 @@ body.pip-body {
 .np-rating-pill:has(.np-rating-dot.active.rating-2) .np-rating-dot:hover,
 .np-rating-pill:has(.np-rating-dot.active.rating-3) .np-rating-dot:hover {
   background: var(--darkGrad);
+  border-radius: 30%;
   border-color: var(--accent);
+  border: 2px solid color-mix(in srgb, var(--accent) 100%, transparent);
   opacity: 1;
 }
 
@@ -3216,7 +3218,7 @@ body.pip-body {
   font-size: 30px;
   font-weight: 700;
   line-height: 1;
-  color: var(--scndry1);
+  color: var(--scndry2);
   opacity: 1;
   user-select: none;
   pointer-events: none;
